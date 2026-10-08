@@ -73,6 +73,7 @@ def body_end(text, start):
 
 def stub_calls(text):
     calls = [STUB]
+    calls.append("UnsupportedQuery(")
     for match in STUB_WRAPPER.finditer(text):
         if STUB in text[match.end() - 1:body_end(text, match.end() - 1)]:
             calls.append(match.group(1) + "(")

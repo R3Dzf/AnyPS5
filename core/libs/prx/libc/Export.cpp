@@ -1,5 +1,7 @@
 #include <cstdint>
 #include <cstddef>
+#include <cstdio>
+#include <cstdlib>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libc/include/HeapDiagnostics.hpp"
@@ -20,9 +22,11 @@ extern "C" {
 
 // Dead import of Cyberpunk 2077 (PPSA04029): no call sites, but the
 // Windows loader resolves imports strictly, so it must be present.
-int APS5_VABI _ZSt14_Atomic_assertPKcS0__nid_postfix() {
- NotImplemented_nid_no_patch(__func__);
- return 0;
+void APS5_VABI _ZSt14_Atomic_assertPKcS0__nid_postfix(const char* message, const char* location) {
+    std::fprintf(stderr, "[libc] atomic assertion failed: %s%s%s\n",
+        message != nullptr ? message : "(null)",
+        location != nullptr ? " at " : "", location != nullptr ? location : "");
+    std::abort();
 }
 
 // Live Cyberpunk 2077 import used in an fopen/fseek/ftell-like file-size

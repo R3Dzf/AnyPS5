@@ -8,6 +8,7 @@
 #include "SceTypes.hpp"
 
 #include <cerrno>
+#include <cstdarg>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -195,9 +196,21 @@ int APS5_VABI sceKernelUnlink(const char* path) {
     return 0;
 }
 
-int APS5_VABI sceKernelFcntl() {
+int APS5_VABI sceKernelFcntl(int d, int cmd, ...) {
+#ifdef _WIN32
     NotImplemented_nid_no_patch(__func__);
     return 0;
+#else
+    std::va_list arguments;
+    va_start(arguments, cmd);
+    void* arg = va_arg(arguments, void*);
+    va_end(arguments);
+    const int result = ::fcntl(d, cmd, arg);
+#endif
+    if (result < 0) {
+        return SceErrorFromErrno(errno);
+    }
+    return result;
 }
 
 }
