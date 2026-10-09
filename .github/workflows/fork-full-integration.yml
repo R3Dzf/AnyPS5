@@ -1,8 +1,8 @@
-name: Full fork integration build
+name: Bosha unified upstream full build
 
 on:
   push:
-    branches: [ci/fork-full-integration]
+    branches: [ci/bosha-upstream-validation]
 
 permissions:
   contents: read
@@ -19,9 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: integration/multilib-usbd-all-fixes
+          ref: integration/bosha-upstream-refresh-20261010
           submodules: recursive
           persist-credentials: false
+
+      - name: Measure current unified library coverage
+        run: python3 tools/progress.py "$RUNNER_TEMP/bosha-progress"
 
       - name: Restore compiler cache (ccache)
         uses: hendrikmuhs/ccache-action@v1.2.24
@@ -68,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: integration/multilib-usbd-all-fixes
+          ref: integration/bosha-upstream-refresh-20261010
           submodules: recursive
           persist-credentials: false
 
