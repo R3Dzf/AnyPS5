@@ -128,6 +128,25 @@ foreach(LIB_DIR ${LIBS_DIRS})
     endif()
 endforeach()
 
+if(MINGW)
+    get_filename_component(PATCHED_LIBS_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    foreach(runtimeName IN ITEMS libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
+        set(runtimeSource "${PATCHED_LIBS_COMPILER_DIR}/${runtimeName}")
+        set(runtimeDestination "${PATCHED_DIR}/${runtimeName}")
+        if(NOT EXISTS "${runtimeSource}")
+            message(FATAL_ERROR "Cannot locate MinGW runtime: ${runtimeSource}")
+        endif()
+        add_custom_command(
+                OUTPUT "${runtimeDestination}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${PATCHED_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${runtimeSource}" "${runtimeDestination}"
+                DEPENDS "${runtimeSource}"
+                VERBATIM
+        )
+        list(APPEND PATCHED_OUTPUTS "${runtimeDestination}")
+    endforeach()
+endif()
+
 add_custom_target(libs DEPENDS ${PATCHED_OUTPUTS})
 
 if(BUILD_TESTING)
