@@ -17,6 +17,7 @@ int APS5_VABI sceNpEntitlementAccessRequestUnifiedEntitlementInfoList();
 int APS5_VABI sceNpEntitlementAccessPollUnifiedEntitlementInfoList();
 int APS5_VABI sceNpEntitlementAccessRequestServiceEntitlementInfoList();
 int APS5_VABI sceNpEntitlementAccessPollServiceEntitlementInfoList();
+int APS5_VABI sceNpSessionSignalingGetConnectionStatus(std::int32_t, std::int32_t, std::int32_t*, void*, std::uint16_t*);
 int APS5_VABI sceRudpInit_nid_postfix(void*, int);
 int APS5_VABI sceRudpGetStatus(void*, std::size_t);
 int APS5_VABI sceRudpTerminate();
@@ -66,6 +67,20 @@ int main() {
     Require(sceNpEntitlementAccessPollUnifiedEntitlementInfoList() == signedOut);
     Require(sceNpEntitlementAccessRequestServiceEntitlementInfoList() == signedOut);
     Require(sceNpEntitlementAccessPollServiceEntitlementInfoList() == signedOut);
+
+    constexpr int signalingInvalidArgument = static_cast<int>(0x80553303);
+    constexpr int signalingUnavailable = static_cast<int>(0x80552D06);
+    std::int32_t connectionStatus = 0x12345678;
+    std::uint16_t peerPort = 0x2345;
+    std::array<unsigned char, 16> peerAddress{};
+    peerAddress.fill(0xA5);
+    Require(sceNpSessionSignalingGetConnectionStatus(1, 1, nullptr, peerAddress.data(), &peerPort) == signalingInvalidArgument);
+    Require(sceNpSessionSignalingGetConnectionStatus(1, 1, &connectionStatus, peerAddress.data(), &peerPort) == signalingUnavailable);
+    Require(connectionStatus == 0x12345678);
+    Require(peerPort == 0x2345);
+    for (unsigned char octet : peerAddress) Require(octet == 0xA5);
+    Require(sceNpSessionSignalingGetConnectionStatus(0, 0, &connectionStatus, nullptr, nullptr) == signalingUnavailable);
+    Require(connectionStatus == 0x12345678);
 
     std::array<unsigned char, 248> status;
     status.fill(0x5a);
