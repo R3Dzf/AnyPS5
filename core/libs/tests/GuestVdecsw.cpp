@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -233,12 +234,45 @@ void testWithoutOutput() {
     check(sceVdecswTrySyncDecodeInput(session.decoder, &result) == InputQueueEmpty, "a reset decoder kept its inputs");
 }
 
+void testOversizedInput() {
+    Session session;
+    const auto units = accessUnits(false);
+    for (const std::uint64_t size : {std::numeric_limits<std::uint64_t>::max(),
+             static_cast<std::uint64_t>(std::numeric_limits<int>::max()) + 1u}) {
+        const InputData input{sizeof(InputData), units[0].data(), size, 1000, 0, 0xa0};
+        bool rejected = false;
+        try {
+            sceVdecswSetDecodeInput(session.decoder, &input);
+        } catch (const std::runtime_error& error) {
+            rejected = std::string(error.what()) == "Vdecsw: access unit exceeds decoder size limit";
+        }
+        check(rejected, "oversized input was not rejected before copying");
+        InputResult result{sizeof(InputResult)};
+        check(sceVdecswTrySyncDecodeInput(session.decoder, &result) == InputQueueEmpty && result.decodedAu == nullptr,
+            "oversized input changed the decoder queue");
+    }
+    const InputData valid{sizeof(InputData), units[0].data(), units[0].size(), 1000, 0, 0xa0};
+    check(sceVdecswSetDecodeInput(session.decoder, &valid) == 0, "valid input after rejection failed");
+    InputResult result{sizeof(InputResult)};
+    check(sceVdecswTrySyncDecodeInput(session.decoder, &result) == 0 && result.decodedAu == valid.auData,
+        "valid input after rejection was not consumed");
+    std::vector<std::uint8_t> buffer(session.memory.maxFrameBufferSize);
+    const FrameBuffer frame{sizeof(FrameBuffer), buffer.data(), buffer.size()};
+    check(sceVdecswSetDecodeOutput(session.decoder, &frame) == 0, "output buffer after rejection failed");
+    check(sceVdecswFinalizeDecodeSequence(session.decoder) == 0, "finalize after rejection failed");
+    OutputInfo output{sizeof(OutputInfo)};
+    check(sceVdecswTrySyncDecodeOutput(session.decoder, &output) == 0 && output.isValid && output.isLastFrame,
+        "valid input after rejection did not produce a picture");
+    check(hashNv12(buffer.data(), output.framePitch) == PictureHashes[0], "picture after rejection differs from the reference");
+}
+
 }
 
 int main() {
     try {
         testDecode();
         testWithoutOutput();
+        testOversizedInput();
         std::puts("Vdecsw tests passed");
         return 0;
     } catch (const std::exception& error) {

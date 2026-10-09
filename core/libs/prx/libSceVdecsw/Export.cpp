@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -277,6 +278,7 @@ int APS5_VABI sceVdecswSetDecodeInput(std::uint64_t handle, const InputData* inp
     std::lock_guard lock(decoder->mutex);
     if (decoder->finalized) throw std::runtime_error("Vdecsw: decode input after the sequence was finalized");
     if (input->auData == nullptr || input->auSize == 0) throw std::runtime_error("Vdecsw: empty access unit");
+    if (input->auSize > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) throw std::runtime_error("Vdecsw: access unit exceeds decoder size limit");
     decoder->inputs.push_back({*input, std::vector<std::uint8_t>(input->auData, input->auData + input->auSize)});
     advance(handle, *decoder);
     return 0;
