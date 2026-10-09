@@ -3,7 +3,7 @@ name: Fork contribution validation
 on:
   push:
     branches:
-      - ci/fork-validation
+      - ci/fork-all-fixes
 
 permissions:
   contents: read
@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ref: integration/multilib-usbd-csprng
-            target: guest_font_tests guest_ssl_tests guest_voice_qos_tests guest_random_tests guest_usbd_tests guest_usbd_control_tests
-            test: '(guest_font|guest_ssl|guest_voice_qos|guest_random|guest_usbd(_control)?)'
+          - ref: integration/multilib-usbd-all-fixes
+            target: guest_font_tests guest_ssl_tests guest_voice_qos_tests guest_random_tests guest_usbd_tests guest_usbd_control_tests guest_gameupdate_tests guest_offline_imports_tests
+            test: '(guest_font|guest_ssl|guest_voice_qos|guest_random|guest_usbd(_control)?|guest_gameupdate|guest_offline_imports)'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,9 +43,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ref: integration/multilib-usbd-csprng
-            target: guest_font_tests guest_ssl_tests guest_voice_qos_tests guest_random_tests guest_usbd_tests guest_usbd_control_tests
-            test: '(guest_font|guest_ssl|guest_voice_qos|guest_random|guest_usbd(_control)?)'
+          - ref: integration/multilib-usbd-all-fixes
+            target: guest_font_tests guest_ssl_tests guest_voice_qos_tests guest_random_tests guest_usbd_tests guest_usbd_control_tests guest_gameupdate_tests guest_offline_imports_tests
+            test: '(guest_font|guest_ssl|guest_voice_qos|guest_random|guest_usbd(_control)?|guest_gameupdate|guest_offline_imports)'
     env:
       WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
       WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: integration/multilib-usbd-csprng
+          ref: integration/multilib-usbd-all-fixes
           persist-credentials: false
       - name: Run upstream progress scanner
         run: python3 tools/progress.py "$RUNNER_TEMP/progress"
