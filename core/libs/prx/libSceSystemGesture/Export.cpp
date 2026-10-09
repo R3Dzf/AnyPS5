@@ -36,11 +36,9 @@ int APS5_VABI sceSystemGestureFinalizePrimitiveTouchRecognizer(void) {
 }
 
 int APS5_VABI sceSystemGestureGetPrimitiveTouchEventByIndex(int32_t gesture_handle, uint32_t index, SystemGesturePrimitiveTouchEvent* event) {
- (void)gesture_handle;
- (void)index;
- (void)event;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    (void)index;
+    (void)event;
+    return gesture_handle == GESTURE_HANDLE ? SCE_SYSTEM_GESTURE_ERROR_INDEX_OUT_OF_ARRAY : SCE_SYSTEM_GESTURE_ERROR_INVALID_HANDLE;
 }
 
 int APS5_VABI sceSystemGestureGetPrimitiveTouchEventByPrimitiveID(int32_t gesture_handle, uint16_t primitiveId, SystemGesturePrimitiveTouchEvent* event) {
@@ -61,9 +59,7 @@ int APS5_VABI sceSystemGestureGetPrimitiveTouchEvents(int32_t gesture_handle, Sy
 }
 
 int APS5_VABI sceSystemGestureGetPrimitiveTouchEventsCount(int32_t gesture_handle) {
- (void)gesture_handle;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    return gesture_handle == GESTURE_HANDLE ? 0 : SCE_SYSTEM_GESTURE_ERROR_INVALID_HANDLE;
 }
 
 int APS5_VABI sceSystemGestureGetTouchEventByEventID(int32_t gesture_handle, const SystemGestureTouchRecognizer* recognizer, uint32_t eventId, SystemGestureTouchEvent* event) {
