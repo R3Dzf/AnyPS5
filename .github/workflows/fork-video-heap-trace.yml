@@ -52,7 +52,9 @@ jobs:
               }
           }
           CPP
-          g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp build/core/libs/libs/unpatched/libc.prx -o build/tests/exception-handoff.exe
+          gendef build/core/libs/libs/unpatched/libc.prx
+          dlltool -d libc.def -D libc.prx -l libc-import.a
+          g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp libc-import.a -o build/tests/exception-handoff.exe
           objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff.exe
           python - <<'PYTHON'
           from pathlib import Path
