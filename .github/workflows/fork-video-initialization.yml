@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: fork-video-init-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   probe:
@@ -35,24 +35,46 @@ jobs:
       - name: Configure debug symbols
         shell: cmd
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-      - name: Build window initialization test
+      - name: Prepare missing-cleanup negative control
+        run: |
+          python - <<'PYTHON'
+          from pathlib import Path
+          path = Path('core/libs/tests/GuestVideoOutWqhdDetection.cpp')
+          text = path.read_text()
+          expected = '        LibcRunShutdown_nid_postfix();\n'
+          if text.count(expected) != 1:
+              raise RuntimeError('Expected exactly one failure-path shutdown call')
+          path.write_text(text.replace(expected, ''))
+          PYTHON
+      - name: Build missing-cleanup negative control
         run: cmake --build build --target guest_video_out_wqhd_detection_tests --parallel 3
       - name: Exercise initialization repeatedly
         continue-on-error: true
-        run: ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 --repeat until-fail:15 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-ctest.log"
+        run: |
+          for attempt in {1..15}; do
+            ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-negative-$attempt.log"
+          done
       - name: Capture initialization debugger trace
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
           gdb --version
           cd build
           gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'run' -ex 'thread apply all bt' --args tests/guest_video_out_wqhd_detection_tests.exe 2>&1 | tee "$GITHUB_WORKSPACE/video-init-gdb.log"
+      - name: Restore failure-path cleanup and rebuild test
+        run: |
+          git checkout -- core/libs/tests/GuestVideoOutWqhdDetection.cpp
+          cmake --build build --target guest_video_out_wqhd_detection_tests --parallel 3
+      - name: Verify clean shutdown repeatedly
+        run: |
+          for attempt in {1..15}; do
+            ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-fixed-$attempt.log"
+          done
       - name: Save initialization diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-video-initialization
           path: |
-            video-init-ctest.log
-            video-init-gdb.log
+            video-init-*.log
             build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
