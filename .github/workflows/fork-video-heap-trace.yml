@@ -53,6 +53,26 @@ jobs:
           }
           CPP
           gendef build/core/libs/libs/unpatched/libc.prx
+          python - <<'PYTHON'
+          from pathlib import Path
+          path = Path('libc.def')
+          text = path.read_text()
+          print('Generated definition header:', '\n'.join(text.splitlines()[:12]))
+          selected = []
+          for line in text.splitlines():
+              fields = line.split()
+              if not fields:
+                  continue
+              name = fields[0].strip('"')
+              if name.startswith(('__cxa_', '_Unwind_', '__gxx_personality_v0', '_ZNSt15__exception_ptr', '_ZNKSt15__exception_ptr', '_ZSt17current_exceptionv', '_ZSt17rethrow_exception')) or name == 'NotImplemented_nid_no_patch':
+                  if 'DATA' not in fields:
+                      selected.append(name)
+          required = ['NotImplemented_nid_no_patch', '__gxx_personality_v0', '_ZSt17current_exceptionv']
+          if any(name not in selected for name in required):
+              raise RuntimeError('Required native exception bridge export missing')
+          path.write_text('LIBRARY "libc.prx"\nEXPORTS\n' + '\n'.join(selected) + '\n')
+          print('Selected function imports:', len(selected))
+          PYTHON
           dlltool -d libc.def -D libc.prx -l libc-import.a
           g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp libc-import.a -o build/tests/exception-handoff.exe
           objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff.exe
