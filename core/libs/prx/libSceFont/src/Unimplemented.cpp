@@ -59,18 +59,6 @@ int APS5_VABI sceFontGetGlyphExpandBufferState() {
     UnsupportedQuery(__func__, "the glyph expand buffer query");
 }
 
-int APS5_VABI sceFontGlyphRenderImage() {
-    UnsupportedQuery(__func__, "the font glyph image render family");
-}
-
-int APS5_VABI sceFontGlyphRenderImageHorizontal() {
-    UnsupportedQuery(__func__, "the font glyph image render family");
-}
-
-int APS5_VABI sceFontGlyphRenderImageVertical() {
-    UnsupportedQuery(__func__, "the font glyph image render family");
-}
-
 int APS5_VABI sceFontGraphicsBeginFrame() {
     UnsupportedQuery(__func__, "the font graphics family");
 }
