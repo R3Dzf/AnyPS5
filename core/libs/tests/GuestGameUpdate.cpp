@@ -27,10 +27,9 @@ int main() {
     Require(sceGameUpdateInitialize() == 0);
     Require(sceGameUpdateGetAddcontLatestVersion(0, label, nullptr) == invalidArgument);
 
-    bool threw = false;
-    try { sceGameUpdateGetAddcontLatestVersion(0, nullptr, &info); }
-    catch (const std::runtime_error&) { threw = true; }
-    Require(threw);
+    const auto originalInfo = info;
+    Require(sceGameUpdateGetAddcontLatestVersion(0, nullptr, &info) == invalidArgument);
+    Require(std::memcmp(&info, &originalInfo, sizeof(info)) == 0);
 
     info.size = sizeof(info) - 1;
     Require(sceGameUpdateGetAddcontLatestVersion(0, label, &info) == invalidSize);
