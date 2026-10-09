@@ -1,0 +1,55 @@
+name: Fork Windows video heap trace
+
+on:
+  push:
+    branches: [test/windows-video-heap-trace]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  trace:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Download compiled initialization probe
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-video-initialization
+          github-token: ${{ github.token }}
+          run-id: 37998444725
+      - name: Install matching debugger and runtime
+        env:
+          WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+          WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+      - name: Trace failed initialization until heap detection
+        run: |
+          test -f build/tests/guest_video_out_wqhd_detection_tests.exe
+          export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
+          export VK_DRIVER_FILES="$(cygpath -w "$GITHUB_WORKSPACE/missing_icd.json")"
+          export VK_ICD_FILENAMES="$VK_DRIVER_FILES"
+          cd build
+          for attempt in {1..100}; do
+            trace="$GITHUB_WORKSPACE/video-heap-gdb-$attempt.log"
+            gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'set breakpoint pending on' -ex 'break RtlReportCriticalFailure' -ex 'run' -ex 'thread apply all bt full' --args tests/guest_video_out_wqhd_detection_tests.exe > "$trace" 2>&1 || true
+            if grep -Eq 'hit Breakpoint|received signal|exited with code 0xc0000374' "$trace"; then
+              cat "$trace"
+              exit 0
+            fi
+          done
+          echo 'No heap-corruption stop captured in 100 debugger runs'
+          exit 1
+      - name: Save heap traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-video-heap-traces
+          retention-days: 3
+          path: video-heap-gdb-*.log
