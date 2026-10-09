@@ -20,6 +20,9 @@ jobs:
           - ref: feat/psn-offline-availability-queries
             target: guest_offline_imports_tests
             test: guest_offline_imports
+          - ref: fix/gameupdate-invalid-entitlement-label
+            target: guest_gameupdate_tests
+            test: guest_gameupdate
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +49,9 @@ jobs:
           - ref: feat/psn-offline-availability-queries
             target: guest_offline_imports_tests
             test: guest_offline_imports
+          - ref: fix/gameupdate-invalid-entitlement-label
+            target: guest_gameupdate_tests
+            test: guest_gameupdate
     env:
       WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
       WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
