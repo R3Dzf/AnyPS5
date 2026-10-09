@@ -131,6 +131,16 @@ endforeach()
 add_custom_target(libs DEPENDS ${PATCHED_OUTPUTS})
 
 if(BUILD_TESTING)
+    add_test_executable(guest_system_gesture_tests tests/GuestSystemGesture.cpp)
+    target_include_directories(guest_system_gesture_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_system_gesture_tests PRIVATE libSceSystemGesture)
+    configure_windows_unwind(guest_system_gesture_tests)
+    add_test(NAME guest_system_gesture COMMAND guest_system_gesture_tests)
+    if(WIN32)
+        set_tests_properties(guest_system_gesture PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceSystemGesture>")
+    endif()
+
     add_test_executable(patched_libraries_tests tests/PatchedLibraries.cpp)
     add_dependencies(patched_libraries_tests libs)
     if(MINGW)
