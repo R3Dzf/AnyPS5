@@ -35,10 +35,16 @@ jobs:
       - name: Configure debug symbols
         shell: cmd
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-g -DCMAKE_C_FLAGS=-g -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-      - name: Prepare missing-cleanup negative control
+      - name: Prepare borrowed-promise negative control
         run: |
           python - <<'PYTHON'
           from pathlib import Path
+          path = Path('core/libs/prx/libSceVideoOut/src/VideoOutDriver.cpp')
+          text = path.read_text()
+          owned = '[this, started = std::move(started)](std::stop_token token) mutable'
+          if text.count(owned) != 1:
+              raise RuntimeError('Expected exactly one owned startup promise')
+          path.write_text(text.replace(owned, '[this, &started](std::stop_token token)'))
           path = Path('core/libs/tests/GuestVideoOutWqhdDetection.cpp')
           text = path.read_text()
           expected = '        LibcRunShutdown_nid_postfix();\n'
@@ -46,12 +52,12 @@ jobs:
               raise RuntimeError('Expected exactly one failure-path shutdown call')
           path.write_text(text.replace(expected, ''))
           PYTHON
-      - name: Build missing-cleanup negative control
+      - name: Build borrowed-promise negative control
         run: cmake --build build --target guest_video_out_wqhd_detection_tests --parallel 3
       - name: Exercise initialization repeatedly
         continue-on-error: true
         run: |
-          for attempt in {1..15}; do
+          for attempt in {1..50}; do
             ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-negative-$attempt.log"
           done
       - name: Capture initialization debugger trace
@@ -60,13 +66,13 @@ jobs:
           gdb --version
           cd build
           gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'run' -ex 'thread apply all bt' --args tests/guest_video_out_wqhd_detection_tests.exe 2>&1 | tee "$GITHUB_WORKSPACE/video-init-gdb.log"
-      - name: Restore failure-path cleanup and rebuild test
+      - name: Restore owned promise and cleanup and rebuild
         run: |
-          git checkout -- core/libs/tests/GuestVideoOutWqhdDetection.cpp
+          git checkout -- core/libs/prx/libSceVideoOut/src/VideoOutDriver.cpp core/libs/tests/GuestVideoOutWqhdDetection.cpp
           cmake --build build --target guest_video_out_wqhd_detection_tests --parallel 3
       - name: Verify clean shutdown repeatedly
         run: |
-          for attempt in {1..15}; do
+          for attempt in {1..50}; do
             ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-fixed-$attempt.log"
           done
       - name: Save initialization diagnostics
@@ -74,7 +80,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-video-initialization
+          retention-days: 3
           path: |
             video-init-*.log
+            build/tests/guest_video_out_wqhd_detection_tests.exe
+            build/tests/*.dll
+            build/core/libs/libs/unpatched/*.prx
             build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
