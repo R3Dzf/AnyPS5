@@ -22,28 +22,6 @@ jobs:
           name: windows-video-initialization
           github-token: ${{ github.token }}
           run-id: 37998444725
-      - name: Download previous debugger traces
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-video-heap-traces
-          github-token: ${{ github.token }}
-          run-id: 38000034530
-          path: previous-traces
-      - name: Inspect previous debugger exits
-        run: |
-          python - <<'PYTHON'
-          from pathlib import Path
-          from collections import Counter
-          import re
-          paths = sorted(Path('previous-traces').glob('*.log'))
-          exits = Counter()
-          for path in paths:
-              text = path.read_text(errors='replace')
-              exits.update(re.findall(r'exited with code ([^\]]+)', text))
-          print('Debugger exits:', dict(exits))
-          if paths:
-              print(paths[0].read_text(errors='replace'))
-          PYTHON
       - name: Install matching debugger and runtime
         env:
           WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
@@ -51,41 +29,41 @@ jobs:
         run: |
           curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
           7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
-      - name: Enable page heap for the probe
-        shell: pwsh
+      - name: Compare controller startup paths
         run: |
-          $probeKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\guest_video_out_wqhd_detection_tests.exe'
-          New-Item -Path $probeKey -Force | Out-Null
-          New-ItemProperty -Path $probeKey -Name GlobalFlag -Value '0x02000000' -PropertyType String -Force | Out-Null
-          Get-ItemProperty -Path $probeKey -Name GlobalFlag
-      - name: Trace failed initialization until heap detection
-        run: |
-          test -f build/tests/guest_video_out_wqhd_detection_tests.exe
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
-          export VK_DRIVER_FILES="$(cygpath -w "$GITHUB_WORKSPACE/missing_icd.json")"
-          export VK_ICD_FILENAMES="$VK_DRIVER_FILES"
-          cd build
-          for attempt in {1..20}; do
-            trace="$GITHUB_WORKSPACE/video-heap-gdb-$attempt.log"
-            gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'run' -ex 'thread apply all bt full' --args tests/guest_video_out_wqhd_detection_tests.exe > "$trace" 2>&1 || true
-            if [ "$attempt" = 1 ]; then cat "$trace"; fi
-            if grep -Eq 'hit Breakpoint|received signal|exited with code 0xc0000374' "$trace"; then
-              cat "$trace"
-              exit 0
-            fi
-          done
-          echo 'No heap-corruption stop captured in 20 page-heap debugger runs'
-          exit 1
-      - name: Remove probe page-heap setting
-        if: ${{ always() }}
-        shell: pwsh
-        run: |
-          $probeKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\guest_video_out_wqhd_detection_tests.exe'
-          Remove-ItemProperty -Path $probeKey -Name GlobalFlag -ErrorAction SilentlyContinue
+          python - <<'PYTHON'
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          from collections import Counter
+          import os
+          import subprocess
+          root = Path.cwd()
+          binary = root / 'build/tests/guest_video_out_wqhd_detection_tests.exe'
+          for name, workers, wgi in [('default_serial', 1, None), ('default_parallel', 2, None), ('wgi_off_parallel', 2, '0')]:
+              env = os.environ.copy()
+              env['VK_DRIVER_FILES'] = str(root / 'missing_icd.json')
+              env['VK_ICD_FILENAMES'] = env['VK_DRIVER_FILES']
+              if wgi is not None:
+                  env['SDL_JOYSTICK_WGI'] = wgi
+              else:
+                  env.pop('SDL_JOYSTICK_WGI', None)
+              def run(attempt):
+                  return subprocess.run([str(binary)], cwd=root / 'build', env=env, capture_output=True, text=True, timeout=20)
+              with ThreadPoolExecutor(max_workers=workers) as pool:
+                  results = list(pool.map(run, range(200)))
+              counts = Counter(result.returncode for result in results)
+              print(name, dict(counts), flush=True)
+              for result in results:
+                  if result.returncode not in (0, 77):
+                      print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
+                      break
+              Path(f'video-heap-{name}.log').write_text(str(dict(counts)))
+          PYTHON
       - name: Save heap traces
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-video-heap-traces
           retention-days: 3
-          path: video-heap-gdb-*.log
+          path: video-heap-*.log
