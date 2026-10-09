@@ -1,0 +1,79 @@
+name: Fork completed-project validation
+
+on:
+  push:
+    branches: [integration/project-completion]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-project-completion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build and CTest / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev libxext-dev libvulkan1 mesa-vulkan-drivers
+      - name: Install supported WinLibs toolchain
+        if: runner.os == 'Windows'
+        env:
+          WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+          WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+          echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+          echo 'SSL_CERT_FILE=C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt' >> "$GITHUB_ENV"
+      - name: Configure Linux
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DANYPS5_ENABLE_SPIRV_TOOLS=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Verify test registration
+        run: python tools/check_test_registration.py build
+      - name: Build affected tests
+        run: cmake --build build --target guest_aio_tests guest_vdecsw_tests guest_videodec2_tests guest_font_tests guest_system_font_tests guest_font_writing_line_tests agc_device_buffer_failure_tests agc_buffer_pool_tests agc_shader_memory_tests guest_cond_recursive_mutex_tests guest_current_cpu_tests agc_driver_flat_store_tests agc_driver_global_vcc_base_tests agc_driver_global_store_addtid_tests agc_driver_global_atomics_tests agc_driver_global_atomics64_tests agc_driver_global_atomics_float_tests agc_driver_global_atomics_lanes_tests agc_driver_global_atomic_csub_tests agc_driver_flat_cache_bits_tests agc_driver_flat_loads_tests agc_driver_d16_memory_tests agc_driver_bda_device_tests --parallel 3
+      - name: Test affected libraries
+        run: ctest --test-dir build --output-on-failure --timeout 30 -R '^(guest_aio|guest_vdecsw|guest_videodec2|guest_font|guest_system_font|guest_font_writing_line|agc_device_buffer_failure|agc_buffer_pool|agc_shader_memory|guest_cond_recursive_mutex|guest_current_cpu|agc_driver_flat_store|agc_driver_global_vcc_base|agc_driver_global_store_addtid|agc_driver_global_atomics|agc_driver_global_atomics64|agc_driver_global_atomics_float|agc_driver_global_atomics_lanes|agc_driver_global_atomic_csub|agc_driver_flat_cache_bits|agc_driver_flat_loads|agc_driver_d16_memory|agc_driver_bda_device)$' --output-log "$GITHUB_WORKSPACE/targeted-ctest.log"
+      - name: Build full project
+        run: cmake --build build --parallel 3
+      - name: Build all guest libraries
+        run: cmake --build build --target libs --parallel 3
+      - name: Run full Linux suite
+        if: runner.os == 'Linux'
+        env:
+          ANYPS5_REQUIRE_VULKAN: "1"
+          GALLIUM_OVERRIDE_CPU_CAPS: avx
+        run: ctest --test-dir build --output-on-failure --timeout 30 --parallel 3 --output-log "$GITHUB_WORKSPACE/full-ctest.log"
+      - name: Run full Windows suite
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build --output-on-failure --timeout 30 --parallel 3 --output-log "$GITHUB_WORKSPACE/full-ctest.log"
+      - name: Save test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-completion-tests-${{ runner.os }}
+          path: |
+            targeted-ctest.log
+            full-ctest.log
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore

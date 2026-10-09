@@ -1,8 +1,8 @@
-name: Fork Windows patched-libc probe
+name: Fork Windows PE loader compatibility
 
 on:
   push:
-    branches: [integration/current-main-compatibility]
+    branches: [fix/nid-pe-loader-compatibility, integration/project-completion]
 
 permissions:
   contents: read
@@ -37,22 +37,29 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
       - name: Build libc and patcher
         run: cmake --build build --target libc nid_patcher --parallel 3
-      - name: Patch libc and inspect imports
+      - name: Prepare patched libc loader
         run: |
-          mkdir -p build/probe
-          cp build/core/libs/libs/unpatched/libc.prx build/probe/libc.prx
-          build/core/libs/nid_patcher.exe libc build/probe/libc.prx
-          objdump -p build/probe/libc.prx | sed -n '/The Import Tables/,/The Export Tables/p'
-      - name: Load patched libc
+          cp build/core/libs/libs/unpatched/libc.prx build/core/libs/libs/libc.prx
+          build/core/libs/nid_patcher.exe libc build/core/libs/libs/libc.prx
+          g++ -std=c++20 -O2 -fasynchronous-unwind-tables -static -static-libgcc -static-libstdc++ core/libs/tests/PatchedLibraries.cpp -o build/tests/patched_libraries_tests.exe
+      - name: Verify CMake runtime selection and load patched libc
         run: |
-          g++ -std=c++20 -O2 -static -static-libgcc -static-libstdc++ core/libs/tests/PatchedLibraries.cpp -o build/patched-libc-probe.exe
-          build/patched-libc-probe.exe "$(cygpath -w "$GITHUB_WORKSPACE/build/probe")"
-      - name: Save libc probe binaries
+          python - <<'PYTHON'
+          import json, subprocess
+          tests = json.loads(subprocess.check_output(['ctest', '--test-dir', 'build', '--show-only=json-v1']))['tests']
+          test = next(test for test in tests if test['name'] == 'patched_libraries')
+          property = next(prop['value'] for prop in test['properties'] if prop['name'] == 'ENVIRONMENT_MODIFICATION')
+          if len(property) != 1 or not property[0].startswith('PATH=path_list_prepend:') or not property[0].replace('\\', '/').endswith('/build/tests'):
+              raise RuntimeError(f'Unexpected patched-library runtime configuration: {property}')
+          print('Generated CTest runtime selection:', property)
+          PYTHON
+          ctest --test-dir build --output-on-failure --timeout 30 -R '^patched_libraries$' --output-log "$GITHUB_WORKSPACE/patched-libc-ctest.log"
+      - name: Save loader test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: windows-patched-libc-probe
+          name: windows-patched-libc-test
           path: |
-            build/probe/libc.prx
-            build/core/libs/libs/unpatched/libc.prx
+            patched-libc-ctest.log
+            build/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
