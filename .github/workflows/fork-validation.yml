@@ -1,0 +1,39 @@
+name: Fork contribution validation
+
+on:
+  push:
+    branches:
+      - ci/fork-validation
+
+permissions:
+  contents: read
+
+jobs:
+  guest-tests:
+    name: ${{ matrix.test }} / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ref: feat/random-os-csprng
+            target: guest_random_tests
+            test: guest_random
+          - ref: feat/system-gesture-offline-primitive-events
+            target: guest_system_gesture_tests
+            test: guest_system_gesture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+          submodules: recursive
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ninja-build libvulkan1 mesa-vulkan-drivers libx11-dev libxext-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Build guest regression test
+        run: cmake --build build --target ${{ matrix.target }} --parallel 3
+      - name: Run guest regression test
+        run: ctest --test-dir build --output-on-failure --timeout 30 -R "^${{ matrix.test }}$"
