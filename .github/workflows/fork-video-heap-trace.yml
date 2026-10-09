@@ -54,6 +54,19 @@ jobs:
           CPP
           g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp build/core/libs/libs/unpatched/libc.prx -o build/tests/exception-handoff.exe
           objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff.exe
+          python - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+          for path in [Path('build/tests/exception-handoff.exe'), Path('build/core/libs/libs/unpatched/libSceVideoOut.prx')]:
+              dump = subprocess.check_output(['objdump', '-p', str(path)], text=True)
+              print('Imports:', path)
+              library = ''
+              for line in dump.splitlines():
+                  if 'DLL Name:' in line:
+                      library = line.strip()
+                  if any(name in line for name in ['current_exception', 'rethrow_exception', 'M_addref', 'M_release', '__cxa_']):
+                      print(library, line.strip())
+          PYTHON
       - name: Repeat isolated handoff
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
