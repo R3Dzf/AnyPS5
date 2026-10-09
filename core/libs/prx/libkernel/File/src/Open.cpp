@@ -206,11 +206,11 @@ int APS5_VABI sceKernelFcntl(int d, int cmd, ...) {
     void* arg = va_arg(arguments, void*);
     va_end(arguments);
     const int result = ::fcntl(d, cmd, arg);
-#endif
     if (result < 0) {
         return SceErrorFromErrno(errno);
     }
     return result;
+#endif
 }
 
 }
