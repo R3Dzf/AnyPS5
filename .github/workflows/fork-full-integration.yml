@@ -77,6 +77,26 @@ jobs:
         run: cmake --build build --parallel 3
       - name: Build all guest libraries
         run: cmake --build build --target libs --parallel 3
+      - name: Stage matching WinLibs runtime DLLs for patched PRX loading
+        run: |
+          set -euo pipefail
+          runtime=/c/winlibs/mingw64/bin
+          patched=build/core/libs/libs
+          for name in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            test -f "$runtime/$name"
+            cp -v "$runtime/$name" "$patched/$name"
+          done
+          ls -l "$patched"/libgcc_s_seh-1.dll "$patched"/libstdc++-6.dll "$patched"/libwinpthread-1.dll
+      - name: Verify patched PRX loading
+        run: ctest --test-dir build --output-on-failure --timeout 60 -R '^patched_libraries
+      - name: Save CTest log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-integration-ctest-windows
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
       - name: Run entire test suite
         run: ctest --test-dir build --output-on-failure --timeout 120 --parallel 4 --output-log ctest.log
       - name: Save CTest log
