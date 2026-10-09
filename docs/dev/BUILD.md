@@ -42,6 +42,13 @@ cmake --build build --target libs --parallel
 files from `build/core/libs/libs`, which only that second step refreshes. Running a title after a
 library change without it therefore tests the previous binaries and can show no effect at all.
 
+On Windows, the `libs` target also copies the matching `libgcc_s_seh-1.dll`,
+`libstdc++-6.dll` and `libwinpthread-1.dll` from the configured MinGW toolchain
+into `build/core/libs/libs` alongside the patched `.prx` files. Keep these
+runtime DLLs beside the libraries when copying them into a title's runtime
+directory; mixing runtime DLLs from a different compiler installation can
+prevent the libraries from loading.
+
 [Relinker usage and runtime layout](../user/USAGE.md).
 
 ## CMake flags
