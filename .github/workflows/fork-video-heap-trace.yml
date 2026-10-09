@@ -29,7 +29,32 @@ jobs:
         run: |
           curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
           7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
-      - name: Compare controller startup paths
+      - name: Compile isolated exception handoff
+        run: |
+          export PATH="/c/winlibs/mingw64/bin:$PATH"
+          cat > exception-handoff.cpp <<'CPP'
+          #include <future>
+          #include <thread>
+          #include <stdexcept>
+          #include <utility>
+          extern "C" void NotImplemented_nid_no_patch(const char*);
+          int main() {
+              for (int attempt = 0; attempt < 100; ++attempt) {
+                  std::promise<void> started;
+                  auto attached = started.get_future();
+                  std::jthread producer([started = std::move(started)]() mutable {
+                      try { NotImplemented_nid_no_patch("isolated handoff"); }
+                      catch (...) { started.set_exception(std::current_exception()); }
+                  });
+                  try { attached.get(); return 1; }
+                  catch (const std::runtime_error&) {}
+                  producer.join();
+              }
+          }
+          CPP
+          g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp build/core/libs/libs/unpatched/libc.prx -o build/tests/exception-handoff.exe
+          objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff.exe
+      - name: Repeat isolated handoff
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
           python - <<'PYTHON'
@@ -39,26 +64,18 @@ jobs:
           import os
           import subprocess
           root = Path.cwd()
-          binary = root / 'build/tests/guest_video_out_wqhd_detection_tests.exe'
-          for name, workers, wgi in [('default_serial', 1, None), ('default_parallel', 2, None), ('wgi_off_parallel', 2, '0')]:
-              env = os.environ.copy()
-              env['VK_DRIVER_FILES'] = str(root / 'missing_icd.json')
-              env['VK_ICD_FILENAMES'] = env['VK_DRIVER_FILES']
-              if wgi is not None:
-                  env['SDL_JOYSTICK_WGI'] = wgi
-              else:
-                  env.pop('SDL_JOYSTICK_WGI', None)
-              def run(attempt):
-                  return subprocess.run([str(binary)], cwd=root / 'build', env=env, capture_output=True, text=True, timeout=20)
-              with ThreadPoolExecutor(max_workers=workers) as pool:
-                  results = list(pool.map(run, range(200)))
-              counts = Counter(result.returncode for result in results)
-              print(name, dict(counts), flush=True)
-              for result in results:
-                  if result.returncode not in (0, 77):
-                      print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
-                      break
-              Path(f'video-heap-{name}.log').write_text(str(dict(counts)))
+          binary = root / 'build/tests/exception-handoff.exe'
+          def run(attempt):
+              return subprocess.run([str(binary)], cwd=root / 'build', capture_output=True, text=True, timeout=20)
+          with ThreadPoolExecutor(max_workers=2) as pool:
+              results = list(pool.map(run, range(200)))
+          counts = Counter(result.returncode for result in results)
+          print('isolated_handoff', dict(counts), flush=True)
+          for result in results:
+              if result.returncode != 0:
+                  print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
+                  break
+          Path('video-heap-isolated-handoff.log').write_text(str(dict(counts)))
           PYTHON
       - name: Save heap traces
         if: ${{ always() }}
