@@ -1,0 +1,60 @@
+name: Windows PRX runtime regression
+
+on:
+  push:
+    branches: [ci/windows-prx-runtime-regression]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+    env:
+      WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+      WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+      SSL_CERT_FILE: 'C:/Program Files/Git/mingw64/etc/ssl/certs/ca-bundle.crt'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/windows-patched-prx-runtime-dlls
+          submodules: recursive
+          persist-credentials: false
+      - name: Restore supported WinLibs
+        id: winlibs
+        uses: actions/cache@v4
+        with:
+          path: C:/winlibs
+          key: winlibs-${{ runner.os }}-${{ env.WINLIBS_ZIP }}
+      - name: Download supported WinLibs on cache miss
+        if: steps.winlibs.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+      - name: Set PATH
+        run: echo 'C:/winlibs/mingw64/bin' >> "$GITHUB_PATH"
+      - name: Restore compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          variant: sccache
+          key: prx-runtime-winlibs15-release-v1
+          max-size: 1G
+          save: true
+      - name: Configure without test-only staging
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build all patched libraries through regression test
+        run: cmake --build build --target patched_libraries_tests --parallel 3
+      - name: Verify DLLs automatically staged by libs target
+        run: |
+          set -euo pipefail
+          for name in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            cmp -s "/c/winlibs/mingw64/bin/$name" "build/core/libs/libs/$name"
+            echo "$name is byte-for-byte identical to the configured compiler runtime"
+          done
+      - name: Load every patched PRX
+        run: ctest --test-dir build --output-on-failure --timeout 120 -R patched_libraries
