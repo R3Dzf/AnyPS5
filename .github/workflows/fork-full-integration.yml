@@ -1,0 +1,88 @@
+name: Full fork integration build
+
+on:
+  push:
+    branches: [ci/fork-full-integration]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-full-integration
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Full build and CTest / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/multilib-usbd-all-fixes
+          submodules: recursive
+          persist-credentials: false
+      - name: Install Vulkan software renderer
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DANYPS5_ENABLE_SPIRV_TOOLS=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Verify test registration
+        run: python3 tools/check_test_registration.py build
+      - name: Build project
+        run: cmake --build build --parallel 3
+      - name: Build all guest libraries
+        run: cmake --build build --target libs --parallel 3
+      - name: Run entire test suite
+        env:
+          ANYPS5_REQUIRE_VULKAN: "1"
+          GALLIUM_OVERRIDE_CPU_CAPS: avx
+        run: ctest --test-dir build --output-on-failure --timeout 120 --parallel 4 --output-log ctest.log
+      - name: Save CTest log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-integration-ctest-linux
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  windows:
+    name: Full build and CTest / Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+      WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+      SSL_CERT_FILE: C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/multilib-usbd-all-fixes
+          submodules: recursive
+          persist-credentials: false
+      - name: Install supported WinLibs toolchain
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+          echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+      - name: Configure
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Verify test registration
+        shell: cmd
+        run: python tools/check_test_registration.py build
+      - name: Build project
+        run: cmake --build build --parallel 3
+      - name: Build all guest libraries
+        run: cmake --build build --target libs --parallel 3
+      - name: Run entire test suite
+        run: ctest --test-dir build --output-on-failure --timeout 120 --parallel 4 --output-log ctest.log
+      - name: Save CTest log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-integration-ctest-windows
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
