@@ -68,18 +68,26 @@ int APS5_VABI sceSslTerm_nid_postfix(int ssl_ctx_id) {
     return 0;
 }
 
-int APS5_VABI sceSslClose() {
- NotImplemented_nid_no_patch(__func__);
- return 0;
+int APS5_VABI sceSslClose(int ssl_connection_id) {
+    if (ssl_connection_id <= 0) return ERROR_INVALID_ARG;
+    return 0;
 }
 
-int APS5_VABI sceSslGetSerialNumber() {
- NotImplemented_nid_no_patch(__func__);
- return 0;
+int APS5_VABI sceSslGetSerialNumber(int ssl_ctx_id, void* ssl_cert, std::uint8_t* sbo_data, std::size_t* sbo_len) {
+    if (!ssl_cert || !sbo_len) return ERROR_INVALID_ARG;
+    (void)ssl_ctx_id;
+    (void)sbo_data;
+    return ERROR_NOT_FOUND;
 }
 
-int APS5_VABI sceSslLoadCert() {
-    NotImplemented_nid_no_patch(__func__);
+int APS5_VABI sceSslLoadCert(int ssl_ctx_id, int ca_cert_num, SslData** ca_list, SslData* cert, SslData* priv_key) {
+    if (ca_cert_num < 0 || (ca_cert_num > 0 && !ca_list)) return ERROR_INVALID_ARG;
+    for (int index = 0; index < ca_cert_num; ++index) {
+        if (!ca_list[index] || !ca_list[index]->ptr || !ca_list[index]->size) return ERROR_INVALID_ARG;
+    }
+    (void)ssl_ctx_id;
+    (void)cert;
+    (void)priv_key;
     return 0;
 }
 
@@ -92,32 +100,43 @@ int APS5_VABI sceSslGetMemoryPoolStats(int ssl_ctx_id, SslMemoryPoolStats* stats
     return 0;
 }
 
-int APS5_VABI sceSslFreeSslCertName(void) {
-    NotImplemented_nid_no_patch(__func__);
+int APS5_VABI sceSslFreeSslCertName(int ssl_ctx_id, void* cert_name) {
+    if (!cert_name) return ERROR_INVALID_ARG;
+    (void)ssl_ctx_id;
     return 0;
 }
 
-int APS5_VABI sceSslGetIssuerName(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+void* APS5_VABI sceSslGetIssuerName(int ssl_ctx_id, void* ssl_cert) {
+    if (!ssl_cert) return nullptr;
+    (void)ssl_ctx_id;
+    return nullptr;
 }
 
-int APS5_VABI sceSslGetNameEntryCount(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceSslGetNameEntryCount(int ssl_ctx_id, void* cert_name) {
+    if (!cert_name) return ERROR_INVALID_ARG;
+    (void)ssl_ctx_id;
+    return ERROR_NOT_FOUND;
 }
 
-int APS5_VABI sceSslGetNameEntryInfo(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceSslGetNameEntryInfo(int ssl_ctx_id, void* cert_name, int entry_num, std::uint8_t* oid_name,
+                                     std::size_t max_oid_name_len, std::uint8_t* value, std::size_t max_value_len,
+                                     std::size_t* value_len) {
+    if (!cert_name || !value_len || entry_num < 0) return ERROR_INVALID_ARG;
+    (void)ssl_ctx_id;
+    (void)oid_name;
+    (void)max_oid_name_len;
+    (void)value;
+    (void)max_value_len;
+    return ERROR_NOT_FOUND;
+}
+
+void* APS5_VABI sceSslGetSubjectName(int ssl_ctx_id, void* ssl_cert) {
+    if (!ssl_cert) return nullptr;
+    (void)ssl_ctx_id;
+    return nullptr;
 }
 
 int APS5_VABI sceSslGetPem(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceSslGetSubjectName(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
