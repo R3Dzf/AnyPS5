@@ -11,6 +11,7 @@ int main() {
     constexpr int invalid = static_cast<int>(0x817C0016);
     unsigned char buffer[80];
     Require(sceRandomGetRandomNumber(nullptr, 16) == invalid);
+    Require(sceRandomGetRandomNumber(nullptr, 0) == invalid);
     std::memset(buffer, 0xAA, sizeof(buffer));
     Require(sceRandomGetRandomNumber(buffer, 65) == invalid);
     Require(buffer[0] == 0xAA);
@@ -18,6 +19,12 @@ int main() {
     Require(buffer[0] == 0xAA);
     Require(sceRandomGetRandomNumber(buffer, 7) == 0);
     Require(buffer[7] == 0xAA);
+    for (std::size_t size = 1; size <= 64; ++size) {
+        std::memset(buffer, 0xAA, sizeof(buffer));
+        Require(sceRandomGetRandomNumber(buffer + 1, size) == 0);
+        Require(buffer[0] == 0xAA);
+        Require(buffer[size + 1] == 0xAA);
+    }
     unsigned char first[64] = {};
     unsigned char second[64] = {};
     Require(sceRandomGetRandomNumber(first, sizeof(first)) == 0);
