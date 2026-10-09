@@ -94,6 +94,13 @@ jobs:
       - name: Load patched libc
         run: |
           g++ -std=c++20 -O2 -static -static-libgcc -static-libstdc++ core/libs/tests/PatchedLibraries.cpp -o build/patched-libc-probe.exe
+          where.exe libstdc++-6.dll
+          if build/patched-libc-probe.exe "$(cygpath -w "$GITHUB_WORKSPACE/build/probe")"; then
+            echo 'Default runtime search succeeded'
+          else
+            echo 'Default runtime search failed'
+          fi
+          export PATH="$GITHUB_WORKSPACE/build/tests:$PATH"
           build/patched-libc-probe.exe "$(cygpath -w "$GITHUB_WORKSPACE/build/probe")"
       - name: Save libc probe binaries
         if: ${{ always() }}
