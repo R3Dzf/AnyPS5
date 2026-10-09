@@ -59,6 +59,7 @@ private:
     VkDeviceMemory memory = VK_NULL_HANDLE;
     std::size_t size;
     std::size_t capacity;
+    bool ready = false;
     VkDeviceSize allocationBytes = 0;
     VkBufferUsageFlags usage;
     std::shared_ptr<BufferPool> cache;

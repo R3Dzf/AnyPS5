@@ -1,0 +1,58 @@
+name: Fork Windows patched-libc probe
+
+on:
+  push:
+    branches: [integration/current-main-compatibility]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-patched-libc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install supported WinLibs toolchain
+        env:
+          WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+          WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+          echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+          echo 'SSL_CERT_FILE=C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt' >> "$GITHUB_ENV"
+      - name: Configure
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Build libc and patcher
+        run: cmake --build build --target libc nid_patcher --parallel 3
+      - name: Patch libc and inspect imports
+        run: |
+          mkdir -p build/probe
+          cp build/core/libs/libs/unpatched/libc.prx build/probe/libc.prx
+          build/core/libs/nid_patcher.exe libc build/probe/libc.prx
+          objdump -p build/probe/libc.prx | sed -n '/The Import Tables/,/The Export Tables/p'
+      - name: Load patched libc
+        run: |
+          g++ -std=c++20 -O2 -static -static-libgcc -static-libstdc++ core/libs/tests/PatchedLibraries.cpp -o build/patched-libc-probe.exe
+          build/patched-libc-probe.exe "$(cygpath -w "$GITHUB_WORKSPACE/build/probe")"
+      - name: Save libc probe binaries
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-patched-libc-probe
+          path: |
+            build/probe/libc.prx
+            build/core/libs/libs/unpatched/libc.prx
+          if-no-files-found: ignore
