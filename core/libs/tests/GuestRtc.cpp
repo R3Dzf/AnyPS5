@@ -214,6 +214,11 @@ int main() {
     Require(sceRtcParseDateTime(&tick, "1970-01-01T00:00:00Z") == 0 && tick.tick == unixEpochTick);
     Require(sceRtcParseDateTime(&tick, "2023-02-29T00:00:00Z") == invalidDay);
     Require(sceRtcParseDateTime(nullptr, "1970-01-01T00:00:00Z") == invalidPointer);
+    for (const char* truncated : {"T", "Th", "Thur", "Thursda", "Thu, 1 F", "Thu, 1 Febr", "Thu, 1 Septemb"}) {
+        tick.tick = 123;
+        Require(sceRtcParseDateTime(&tick, truncated) == badParse);
+        Require(tick.tick == 123);
+    }
     Require(sceRtcParseDateTime(&tick, "Thu, 29 Feb 2024 12:34:56") == 0 && tick.tick == leapDayTick - 789000ull);
     Require(sceRtcParseDateTime(&tick, "Thu, 29 Feb 2024 12:34:56 GMT") == 0 && tick.tick == leapDayTick - 789000ull);
     Require(sceRtcParseDateTime(&tick, "Thu, 29 Feb 2024 14:04:56 +0130") == 0 && tick.tick == leapDayTick - 789000ull);
