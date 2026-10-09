@@ -17,12 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ref: feat/random-os-csprng
-            target: guest_random_tests
-            test: guest_random
-          - ref: feat/system-gesture-offline-primitive-events
-            target: guest_system_gesture_tests
-            test: guest_system_gesture
+          - ref: feat/psn-offline-availability-queries
+            target: guest_offline_imports_tests
+            test: guest_offline_imports
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,12 +43,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ref: feat/random-os-csprng
-            target: guest_random_tests
-            test: guest_random
-          - ref: feat/system-gesture-offline-primitive-events
-            target: guest_system_gesture_tests
-            test: guest_system_gesture
+          - ref: feat/psn-offline-availability-queries
+            target: guest_offline_imports_tests
+            test: guest_offline_imports
     env:
       WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
       WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
