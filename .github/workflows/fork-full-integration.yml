@@ -15,17 +15,26 @@ jobs:
   linux:
     name: Full build and CTest / Linux
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           ref: integration/multilib-usbd-all-fixes
           submodules: recursive
           persist-credentials: false
+
+      - name: Restore compiler cache (ccache)
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: full-linux-gcc-release-v1
+          max-size: 1.5G
+          save: true
+          evict-old-files: job
+
       - name: Install Vulkan software renderer
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DANYPS5_ENABLE_SPIRV_TOOLS=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DANYPS5_ENABLE_SPIRV_TOOLS=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Verify test registration
         run: python3 tools/check_test_registration.py build
       - name: Build project
@@ -48,11 +57,11 @@ jobs:
   windows:
     name: Full build and CTest / Windows
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 65
     env:
       WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
       WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
-      SSL_CERT_FILE: C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt
+      SSL_CERT_FILE: 'C:/Program Files/Git/mingw64/etc/ssl/certs/ca-bundle.crt'
     defaults:
       run:
         shell: bash
@@ -62,14 +71,35 @@ jobs:
           ref: integration/multilib-usbd-all-fixes
           submodules: recursive
           persist-credentials: false
-      - name: Install supported WinLibs toolchain
+
+      - name: Restore WinLibs toolchain cache
+        id: winlibs
+        uses: actions/cache@v4
+        with:
+          path: C:/winlibs
+          key: winlibs-${{ runner.os }}-${{ env.WINLIBS_ZIP }}
+
+      - name: Install project-supported WinLibs on cache miss
+        if: steps.winlibs.outputs.cache-hit != 'true'
         run: |
           curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
           7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
-          echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+
+      - name: Add WinLibs to PATH
+        run: echo 'C:/winlibs/mingw64/bin' >> "$GITHUB_PATH"
+
+      - name: Restore compiler cache (sccache)
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          variant: sccache
+          key: full-windows-mingw15-release-v1
+          max-size: 1.5G
+          save: true
+          evict-old-files: job
+
       - name: Configure
         shell: cmd
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       - name: Verify test registration
         shell: cmd
         run: python tools/check_test_registration.py build
@@ -77,6 +107,7 @@ jobs:
         run: cmake --build build --parallel 3
       - name: Build all guest libraries
         run: cmake --build build --target libs --parallel 3
+
       - name: Stage matching WinLibs runtime DLLs for patched PRX loading
         run: |
           set -euo pipefail
@@ -87,16 +118,9 @@ jobs:
             cp -v "$runtime/$name" "$patched/$name"
           done
           ls -l "$patched"/libgcc_s_seh-1.dll "$patched"/libstdc++-6.dll "$patched"/libwinpthread-1.dll
-      - name: Verify patched PRX loading
-        run: ctest --test-dir build --output-on-failure --timeout 60 -R '^patched_libraries
-      - name: Save CTest log
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-integration-ctest-windows
-          path: build/Testing/Temporary/LastTest.log
-          if-no-files-found: ignore
 
+      - name: Verify patched PRX loading
+        run: ctest --test-dir build --output-on-failure --timeout 60 -R patched_libraries
       - name: Run entire test suite
         run: ctest --test-dir build --output-on-failure --timeout 120 --parallel 4 --output-log ctest.log
       - name: Save CTest log
