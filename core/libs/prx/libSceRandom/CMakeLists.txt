@@ -1,6 +1,9 @@
 add_library(libSceRandom SHARED EXCLUDE_FROM_ALL Export.cpp)
 target_include_directories(libSceRandom PRIVATE ${LIBS_INCLUDE_DIR})
 configure_windows_unwind(libSceRandom)
+if(WIN32)
+    target_link_libraries(libSceRandom PRIVATE bcrypt)
+endif()
 
 if(BUILD_TESTING)
     add_test_executable(guest_random_tests ${LIBS_INCLUDE_DIR}/tests/GuestRandom.cpp)
