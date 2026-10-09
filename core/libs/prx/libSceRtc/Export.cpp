@@ -202,7 +202,7 @@ int readDigits(const char*& cursor, int maxDigits, int& value) {
 
 bool matchWord(const char*& cursor, const char* word, std::size_t length) {
     for (std::size_t index = 0; index < length; ++index) {
-        if (toUpper(cursor[index]) != word[index]) return false;
+        if (cursor[index] == '\0' || toUpper(cursor[index]) != word[index]) return false;
     }
     cursor += length;
     return true;
