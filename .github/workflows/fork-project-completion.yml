@@ -60,6 +60,11 @@ jobs:
         run: |
           cmake --build build --target windows_exception_tests --parallel 3
           ctest --test-dir build --output-on-failure --timeout 20 --repeat until-fail:20 -R '^windows_exceptions$'
+      - name: Verify Windows guest stack margin
+        if: runner.os == 'Windows'
+        run: |
+          cmake --build build --target guest_pthread_stack_tests guest_pthread_attr_tests guest_kernel_is_stack_tests --parallel 3
+          ctest --test-dir build --output-on-failure --timeout 20 -R '^guest_(pthread_stack|pthread_attr|kernel_is_stack)$'
       - name: Build affected tests
         run: cmake --build build --target guest_video_out_wqhd_detection_tests guest_aio_tests guest_vdecsw_tests guest_videodec2_tests guest_font_tests guest_system_font_tests guest_font_writing_line_tests agc_device_buffer_failure_tests agc_buffer_pool_tests agc_shader_memory_tests agc_shader_device_profile_tests agc_shader_control_flow_tests agc_driver_prepared_shaders_tests agc_driver_tests agc_shader_request_diagnostics_tests agc_shader_replay guest_cond_recursive_mutex_tests guest_current_cpu_tests agc_driver_flat_store_tests agc_driver_global_vcc_base_tests agc_driver_global_store_addtid_tests agc_driver_global_atomics_tests agc_driver_global_atomics64_tests agc_driver_global_atomics_float_tests agc_driver_global_atomics_lanes_tests agc_driver_global_atomic_csub_tests agc_driver_flat_cache_bits_tests agc_driver_flat_loads_tests agc_driver_d16_memory_tests agc_driver_bda_device_tests --parallel 3
       - name: Test affected libraries
