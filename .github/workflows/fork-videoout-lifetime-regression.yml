@@ -1,0 +1,75 @@
+name: Fork VideoOut lifetime validation
+
+on:
+  push:
+    branches: [ci/bosha-videoout-lifetime-validation]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/bosha-videoout-presentation-lifetime-20261010
+          submodules: recursive
+          persist-credentials: false
+      - name: Restore compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: full-linux-gcc-release-v1
+          max-size: 1G
+      - name: Install Vulkan software renderer
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Build VideoOut tests
+        run: cmake --build build --target guest_video_out_wqhd_detection_tests guest_video_out_resolution_status_tests --parallel 3
+      - name: Test VideoOut startup and teardown
+        run: ctest --test-dir build --output-on-failure --timeout 45 -R '^(guest_video_out_wqhd_detection(_no_vulkan)?|guest_video_out_resolution_status)$'
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+      WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+      SSL_CERT_FILE: 'C:/Program Files/Git/mingw64/etc/ssl/certs/ca-bundle.crt'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/bosha-videoout-presentation-lifetime-20261010
+          submodules: recursive
+          persist-credentials: false
+      - name: Restore WinLibs toolchain
+        id: winlibs
+        uses: actions/cache@v4
+        with:
+          path: C:/winlibs
+          key: winlibs-${{ runner.os }}-${{ env.WINLIBS_ZIP }}
+      - name: Install WinLibs on cache miss
+        if: steps.winlibs.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+      - name: Add WinLibs to PATH
+        run: echo 'C:/winlibs/mingw64/bin' >> "$GITHUB_PATH"
+      - name: Restore compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          variant: sccache
+          key: full-windows-mingw15-release-v1
+          max-size: 1G
+      - name: Configure
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build VideoOut tests
+        run: cmake --build build --target guest_video_out_wqhd_detection_tests guest_video_out_resolution_status_tests --parallel 3
+      - name: Test VideoOut startup and teardown
+        run: ctest --test-dir build --output-on-failure --timeout 45 -R '^(guest_video_out_wqhd_detection(_no_vulkan)?|guest_video_out_resolution_status)$'
