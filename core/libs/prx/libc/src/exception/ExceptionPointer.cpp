@@ -1,4 +1,7 @@
 #include <exception>
+#ifdef _WIN32
+#include <future>
+#endif
 
 #ifndef _LIBCPP_VERSION
 extern "C" {
@@ -42,6 +45,11 @@ std::exception_ptr APS5_VABI _ZSt17current_exceptionv_nid_postfix() noexcept {
 }
 
 namespace std {
+
+#ifdef _WIN32
+__future_base::_Result_base::_Result_base() = default;
+__future_base::_Result_base::~_Result_base() = default;
+#endif
 
 exception_ptr current_exception() noexcept {
     exception_ptr result;
