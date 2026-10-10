@@ -22,6 +22,11 @@ jobs:
           name: windows-video-initialization
           github-token: ${{ github.token }}
           run-id: 37998444725
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          ref: 3f8e402d2e3b4a43cea2a68a17f57ab19266b18b
+          persist-credentials: false
       - name: Install matching debugger and runtime
         env:
           WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
@@ -144,6 +149,50 @@ jobs:
               raise RuntimeError('Owned future result did not preserve exception lifetime')
           if all_counts['exception-handoff'] == {0: 200}:
               raise RuntimeError('Negative control did not reproduce')
+          PYTHON
+      - name: Preserve native future helpers through NID patching
+        run: |
+          export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
+          python - <<'PYTHON'
+          from pathlib import Path
+          symbols = ['_ZNSt13__future_base12_Result_base' + suffix for suffix in ['C1Ev', 'C2Ev', 'D0Ev', 'D1Ev', 'D2Ev']]
+          symbols += ['_ZT' + kind + 'NSt13__future_base12_Result_baseE' for kind in ['I', 'S', 'V']]
+          content = '#include <future>\nnamespace std {\n__future_base::_Result_base::_Result_base() = default;\n__future_base::_Result_base::~_Result_base() = default;\n}\n'
+          for symbol in symbols:
+              alias = symbol + '_nid_no_patch_cut'
+              content += 'asm(".globl ' + alias + '\\n.set ' + alias + ',' + symbol + '\\n");\n'
+          Path('future-result.cpp').write_text(content)
+          PYTHON
+          g++ -std=c++20 -O3 -fno-asynchronous-unwind-tables -shared future-result.cpp libc-import.a -Wl,--out-implib,future-result.a -o build/tests/future-result.dll
+          objcopy --rename-section .eh_frame=.ehfram build/tests/future-result.dll
+          g++ -std=c++20 -O3 -fno-asynchronous-unwind-tables exception-handoff.cpp future-result.a libc-import.a -o build/tests/exception-handoff-native.exe
+          objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff-native.exe
+          g++ -std=c++20 -O2 -static -static-libgcc -static-libstdc++ -Isource/core/libs/nid/include source/core/libs/nid/src/*.cpp -o nid-patcher.exe
+          ./nid-patcher.exe libc build/tests/future-result.dll
+          python - <<'PYTHON'
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          from collections import Counter
+          import subprocess
+          root = Path.cwd()
+          dump = subprocess.check_output(['objdump', '-p', 'build/tests/future-result.dll'], text=True)
+          print('Patched future exports:', '\n'.join(line for line in dump.splitlines() if 'Result_base' in line))
+          symbols = ['_ZNSt13__future_base12_Result_base' + suffix for suffix in ['C1Ev', 'C2Ev', 'D0Ev', 'D1Ev', 'D2Ev']]
+          symbols += ['_ZT' + kind + 'NSt13__future_base12_Result_baseE' for kind in ['I', 'S', 'V']]
+          exported = {line.split()[-1] for line in dump.splitlines() if 'Result_base' in line}
+          if any(symbol not in exported for symbol in symbols):
+              raise RuntimeError('Native future export was lost after NID patching')
+          def run(attempt):
+              return subprocess.run([str(root / 'build/tests/exception-handoff-native.exe')], cwd=root / 'build', capture_output=True, text=True, timeout=20)
+          with ThreadPoolExecutor(max_workers=2) as pool:
+              results = list(pool.map(run, range(200)))
+          counts = Counter(result.returncode for result in results)
+          print('patched_native_future', dict(counts), flush=True)
+          Path('video-heap-patched-native-future.log').write_text(str(dict(counts)))
+          if counts != {0: 200}:
+              failure = next(result for result in results if result.returncode != 0)
+              print(failure.returncode, failure.stdout, failure.stderr)
+              raise RuntimeError('Patched native future handoff failed')
           PYTHON
       - name: Save heap traces
         if: ${{ always() }}
