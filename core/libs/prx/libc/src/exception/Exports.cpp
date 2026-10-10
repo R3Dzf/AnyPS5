@@ -50,6 +50,12 @@ void* NativeAllocateException(std::size_t size) {
 }
 void NativeFreeException(void* object) asm("__cxa_free_exception");
 void NativeFreeException(void* object) { __cxa_free_exception_nid_postfix(object); }
+LibcException::Header* NativeInitPrimaryException(void* object, std::type_info* type, void (*destructor)(void*)) asm("__cxa_init_primary_exception");
+LibcException::Header* NativeInitPrimaryException(void* object, std::type_info* type, void (*destructor)(void*)) {
+    auto* header = __cxa_init_primary_exception_nid_postfix(object, type, destructor);
+    header->_pad = 1;
+    return header;
+}
 [[noreturn]] void NativeThrow(void* object, std::type_info* type, void (*destructor)(void*)) asm("__cxa_throw");
 [[noreturn]] void NativeThrow(void* object, std::type_info* type, void (*destructor)(void*)) {
     __cxa_throw_nid_postfix(object, type, destructor);

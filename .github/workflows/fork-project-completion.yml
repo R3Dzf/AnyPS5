@@ -50,10 +50,26 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
       - name: Verify test registration
         run: python tools/check_test_registration.py build
+      - name: Build and verify Linux exception regressions
+        if: runner.os == 'Linux'
+        run: |
+          cmake --build build --target exception_runtime_tests exception_personality_tests --parallel 3
+          ctest --test-dir build --output-on-failure --timeout 30 -R '^exception_(runtime|personality)$'
+      - name: Build and verify Windows exception regressions
+        if: runner.os == 'Windows'
+        run: |
+          cmake --build build --target windows_exception_tests --parallel 3
+          ctest --test-dir build --output-on-failure --timeout 20 --repeat until-fail:20 -R '^windows_exceptions$'
       - name: Build affected tests
         run: cmake --build build --target guest_video_out_wqhd_detection_tests guest_aio_tests guest_vdecsw_tests guest_videodec2_tests guest_font_tests guest_system_font_tests guest_font_writing_line_tests agc_device_buffer_failure_tests agc_buffer_pool_tests agc_shader_memory_tests guest_cond_recursive_mutex_tests guest_current_cpu_tests agc_driver_flat_store_tests agc_driver_global_vcc_base_tests agc_driver_global_store_addtid_tests agc_driver_global_atomics_tests agc_driver_global_atomics64_tests agc_driver_global_atomics_float_tests agc_driver_global_atomics_lanes_tests agc_driver_global_atomic_csub_tests agc_driver_flat_cache_bits_tests agc_driver_flat_loads_tests agc_driver_d16_memory_tests agc_driver_bda_device_tests --parallel 3
       - name: Test affected libraries
         run: ctest --test-dir build --output-on-failure --timeout 30 -R '^(guest_video_out_wqhd_detection(_no_vulkan)?|guest_aio|guest_vdecsw|guest_videodec2|guest_font|guest_system_font|guest_font_writing_line|agc_device_buffer_failure|agc_buffer_pool|agc_shader_memory|guest_cond_recursive_mutex|guest_current_cpu|agc_driver_flat_store|agc_driver_global_vcc_base|agc_driver_global_store_addtid|agc_driver_global_atomics|agc_driver_global_atomics64|agc_driver_global_atomics_float|agc_driver_global_atomics_lanes|agc_driver_global_atomic_csub|agc_driver_flat_cache_bits|agc_driver_flat_loads|agc_driver_d16_memory|agc_driver_bda_device)$' --output-log "$GITHUB_WORKSPACE/targeted-ctest.log"
+      - name: Repeat Windows video initialization
+        if: runner.os == 'Windows'
+        run: |
+          for attempt in {1..100}; do
+            ctest --test-dir build --output-on-failure --timeout 20 --parallel 2 -R '^guest_video_out_wqhd_detection(_no_vulkan)?$' --output-log "$GITHUB_WORKSPACE/video-init-fixed-$attempt.log"
+          done
       - name: Build full project
         run: cmake --build build --parallel 3
       - name: Build all guest libraries

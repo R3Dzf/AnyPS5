@@ -1,0 +1,96 @@
+name: Fork Windows exception compatibility
+
+on:
+  push:
+    branches: [fix/windows-exception-compatibility]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install matching WinLibs toolchain
+        env:
+          WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+          WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+          echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+          echo 'SSL_CERT_FILE=C:\Program Files\Git\mingw64\etc\ssl\certs\ca-bundle.crt' >> "$GITHUB_ENV"
+      - name: Configure Release with debug symbols
+        shell: cmd
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-g -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+      - name: Prepare baseline runtime
+        run: |
+          git show 8b393b6e9a8ade9188d4f74a0293e0efd9828597:core/libs/prx/libc/src/exception/Exports.cpp > core/libs/prx/libc/src/exception/Exports.cpp
+          git show 8b393b6e9a8ade9188d4f74a0293e0efd9828597:core/libs/prx/libc/src/exception/Runtime.cpp > core/libs/prx/libc/src/exception/Runtime.cpp
+          git show 8b393b6e9a8ade9188d4f74a0293e0efd9828597:core/libs/prx/libc/src/exception/ExceptionPointer.cpp > core/libs/prx/libc/src/exception/ExceptionPointer.cpp
+          cmake --build build --target windows_exception_tests --parallel 3
+      - name: Verify negative control rejects baseline
+        run: |
+          set +e
+          ctest --test-dir build --output-on-failure --timeout 20 -R '^windows_exceptions$' --output-log "$GITHUB_WORKSPACE/exception-negative.log"
+          baselineStatus=$?
+          set -e
+          if [ "$baselineStatus" -eq 0 ]; then
+            echo 'Regression test did not reject the baseline'
+            exit 1
+          fi
+      - name: Restore changed runtime and rebuild
+        run: |
+          git checkout -- core/libs/prx/libc/src/exception/Exports.cpp core/libs/prx/libc/src/exception/Runtime.cpp core/libs/prx/libc/src/exception/ExceptionPointer.cpp
+          cmake --build build --target windows_exception_tests --parallel 3
+      - name: Verify exception lifetime and handoff repeatedly
+        run: |
+          ctest --test-dir build --output-on-failure --timeout 20 --repeat until-fail:20 -R '^windows_exceptions$' --output-log "$GITHUB_WORKSPACE/exception-positive.log"
+      - name: Repeat video initialization with changed runtime
+        run: |
+          cmake --build build --target guest_video_out_wqhd_detection_tests --parallel 3
+          export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
+          python - <<'PYTHON'
+          from pathlib import Path
+          from concurrent.futures import ThreadPoolExecutor
+          from collections import Counter
+          import os
+          import subprocess
+          root = Path.cwd()
+          binary = root / 'build/tests/guest_video_out_wqhd_detection_tests.exe'
+          all_counts = {}
+          for name, forced in [('default', False), ('no_vulkan', True)]:
+              environment = dict(os.environ)
+              if forced:
+                  environment['VK_ICD_FILENAMES'] = str(root / 'missing-vulkan-icd.json')
+              def run(attempt):
+                  return subprocess.run([str(binary)], cwd=root / 'build', env=environment, capture_output=True, text=True, timeout=20)
+              with ThreadPoolExecutor(max_workers=2) as pool:
+                  results = list(pool.map(run, range(200)))
+              counts = Counter(result.returncode for result in results)
+              all_counts[name] = dict(counts)
+              print(name, dict(counts), flush=True)
+              allowed = {77} if forced else {0, 77}
+              for result in results:
+                  if result.returncode not in allowed:
+                      print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
+                      Path('exception-video-repeats.log').write_text(str(all_counts))
+                      raise RuntimeError('Video initialization did not shut down cleanly')
+          Path('exception-video-repeats.log').write_text(str(all_counts))
+          PYTHON
+      - name: Save regression results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exception-compatibility
+          retention-days: 3
+          path: exception-*.log

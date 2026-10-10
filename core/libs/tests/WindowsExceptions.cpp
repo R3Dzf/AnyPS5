@@ -4,7 +4,9 @@
 #include <atomic>
 #include <array>
 #include <exception>
+#include <future>
 #include <thread>
+#include <utility>
 #include <cstddef>
 #include <typeinfo>
 #include "../prx/libc/include/general/VabiMacros.hpp"
@@ -105,9 +107,58 @@ static void testExceptionPointer() {
     if (std::current_exception()) throw std::runtime_error("stale current exception");
 }
 
+static void TestExceptionHandoff() {
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        std::promise<void> started;
+        auto attached = started.get_future();
+        std::jthread producer([started = std::move(started)]() mutable {
+            try { NotImplemented_nid_no_patch("exception handoff"); }
+            catch (...) { started.set_exception(std::current_exception()); }
+        });
+        bool caught = false;
+        try { attached.get(); }
+        catch (const std::runtime_error& error) {
+            caught = std::strcmp(error.what(), "exception handoff not implemented") == 0;
+        }
+        producer.join();
+        if (!caught) throw std::runtime_error("future lost producer exception");
+        if (std::current_exception()) throw std::runtime_error("handoff left a stale current exception");
+    }
+}
+
+static void TestMakeExceptionPointer() {
+    std::atomic<int> count{0};
+    auto retained = std::make_exception_ptr(TrackedError(&count));
+    const int alreadyDestroyed = count.load();
+    auto copy = retained;
+    bool caught = false;
+    try { std::rethrow_exception(copy); }
+    catch (const TrackedError& error) {
+        caught = std::strcmp(error.what(), "retained error") == 0;
+    }
+    if (!caught || count != alreadyDestroyed) throw std::runtime_error("constructed exception pointer lost its exception");
+    retained = nullptr;
+    if (count != alreadyDestroyed) throw std::runtime_error("constructed exception pointer lost shared ownership");
+    copy = nullptr;
+    if (count != alreadyDestroyed + 1) throw std::runtime_error("constructed exception pointer leaked its exception");
+    std::future<void> abandoned;
+    {
+        std::promise<void> producer;
+        abandoned = producer.get_future();
+    }
+    caught = false;
+    try { abandoned.get(); }
+    catch (const std::future_error& error) {
+        caught = error.code() == std::make_error_code(std::future_errc::broken_promise);
+    }
+    if (!caught) throw std::runtime_error("abandoned promise lost its error");
+}
+
 int main() {
     TestTypeInfoVtables();
     testExceptionPointer();
+    TestExceptionHandoff();
+    TestMakeExceptionPointer();
     try {
         Rethrow();
         return 1;
