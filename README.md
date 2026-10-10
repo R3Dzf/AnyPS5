@@ -88,6 +88,8 @@ build/core/libs/prx/libSceAgcDriver/agc_shader_replay --spv shader_12345cafe.req
 
 Replace the example request name with the captured filename; Windows uses `agc_shader_replay.exe`. Local Linux checks recompiled a valid request to SPIR-V and reproduced the failure of an unsupported instruction. This tool diagnoses compilation; it does not run a game.
 
+The Windows replay build copies the unpatched `libc.prx` and matching compiler runtime DLLs beside the tool. Keep these files together when copying the replay tool elsewhere.
+
 ## Compatibility
 
 See the [game compatibility list](docs/user/COMPATIBILITY.md) for recorded results. It includes the upstream Windows result for Dreaming Sarah (PPSA02929); those game measurements were not reproduced in this validation.

@@ -896,6 +896,28 @@ endif()
 set_target_properties(agc_shader_replay PROPERTIES CXX_EXTENSIONS OFF)
 configure_windows_unwind(agc_shader_replay)
 
+if(WIN32)
+    set(replayRuntimeFiles "$<TARGET_FILE:libc>")
+    if(MINGW)
+        get_filename_component(replayCompilerDirectory "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        foreach(runtimeName IN ITEMS libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
+            set(runtimePath "${replayCompilerDirectory}/${runtimeName}")
+            if(NOT EXISTS "${runtimePath}")
+                message(FATAL_ERROR "Cannot locate MinGW runtime: ${runtimeName}")
+            endif()
+            list(APPEND replayRuntimeFiles "${runtimePath}")
+        endforeach()
+    endif()
+    add_custom_target(agc_shader_replay_runtime
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:agc_shader_replay>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${replayRuntimeFiles} "$<TARGET_FILE_DIR:agc_shader_replay>"
+            DEPENDS libc
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+    )
+    add_dependencies(agc_shader_replay agc_shader_replay_runtime)
+endif()
+
 if(BUILD_TESTING AND Python3_Interpreter_FOUND)
     set_target_properties(agc_shader_replay PROPERTIES EXCLUDE_FROM_ALL OFF)
     add_test(NAME agc_shader_replay_io COMMAND "${Python3_EXECUTABLE}"

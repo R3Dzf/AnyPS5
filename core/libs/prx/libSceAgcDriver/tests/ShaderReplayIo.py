@@ -1,5 +1,6 @@
 import base64
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -102,6 +103,25 @@ class ShaderReplayIoTests(unittest.TestCase):
         status, output = self.run_replay("--spv", "--mem")
         self.assertEqual(status, 2, output)
         self.assertIn("no request files supplied", output)
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows runtime bundle")
+    def test_windows_runtime_bundle(self):
+        bundle = self.directory / "replay"
+        bundle.mkdir()
+        for name in (REPLAY.name, "libc.prx", "libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll"):
+            shutil.copy2(REPLAY.parent / name, bundle / name)
+        environment = {**os.environ, "ANYPS5_NO_SHADER_CACHE": "1"}
+        environment["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
+        result = subprocess.run(
+            [str(bundle / REPLAY.name), "--spv", str(self.request)],
+            cwd=self.directory,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertGreater((self.directory / "valid.req.spv").stat().st_size, 20)
 
 
 if __name__ == "__main__":
