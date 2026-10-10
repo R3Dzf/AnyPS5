@@ -55,17 +55,27 @@ std::string Driver::DumpRequest(std::uint64_t address, const ShaderRecompiler::R
     char name[64];
     std::snprintf(name, sizeof(name), "shader_%llx.req", static_cast<unsigned long long>(address));
     std::lock_guard lock(dumpMutex);
-    if (!dumped.insert(address).second) return name;
+    if (dumped.contains(address)) return name;
     try {
         const auto text = ShaderRecompiler::RequestSerializer{}.Serialize(request);
-        if (std::FILE* file = std::fopen(name, "wb")) {
-            std::fwrite(text.data(), 1, text.size(), file);
-            std::fclose(file);
+        std::FILE* file = std::fopen(name, "wb");
+        if (file == nullptr) {
+            std::fprintf(stderr, "[gpu] could not open request output %s\n", name);
+            return {};
         }
+        const bool written = std::fwrite(text.data(), 1, text.size(), file) == text.size();
+        const bool closed = std::fclose(file) == 0;
+        if (!written || !closed) {
+            std::remove(name);
+            std::fprintf(stderr, "[gpu] could not write complete request to %s\n", name);
+            return {};
+        }
+        dumped.insert(address);
+        return name;
     } catch (const std::exception& error) {
         std::fprintf(stderr, "[gpu] could not serialize request for 0x%llx: %s\n", static_cast<unsigned long long>(address), error.what());
     }
-    return name;
+    return {};
 }
 
 }

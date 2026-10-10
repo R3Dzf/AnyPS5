@@ -16,17 +16,32 @@
 #include <exception>
 #include <fstream>
 #include <sstream>
+#include <span>
+#include <stdexcept>
 #include <string>
 
 namespace {
 
 std::string ReadText(const char* path) {
     std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) throw std::runtime_error("could not open request file");
     std::ostringstream stream;
     stream << file.rdbuf();
+    if (file.bad() || stream.bad()) throw std::runtime_error("could not read request file");
     auto text = stream.str();
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) text.pop_back();
     return text;
+}
+
+void WriteBytes(const std::string& path, std::span<const std::byte> bytes) {
+    std::ofstream file(path, std::ios::binary);
+    if (!file.is_open()) throw std::runtime_error("could not open output " + path);
+    file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    file.close();
+    if (!file) {
+        std::remove(path.c_str());
+        throw std::runtime_error("could not write complete output " + path);
+    }
 }
 
 // The error text without the serialized request that Recompile appends.
@@ -69,10 +84,7 @@ bool Replay(const char* path) {
         for (const auto& region : context.memory) {
             char name[96];
             std::snprintf(name, sizeof(name), "mem_%llx_%llx.bin", static_cast<unsigned long long>(request.request.shader.codeAddress), static_cast<unsigned long long>(region.guestAddress));
-            if (std::FILE* file = std::fopen(name, "wb")) {
-                std::fwrite(region.bytes.data(), 1, region.bytes.size(), file);
-                std::fclose(file);
-            }
+            WriteBytes(name, region.bytes);
             std::printf("  region 0x%llx + 0x%zx -> %s\n", static_cast<unsigned long long>(region.guestAddress), region.bytes.size(), name);
         }
     }
@@ -80,12 +92,7 @@ bool Replay(const char* path) {
         std::string name(path);
         name = name.substr(name.find_last_of("/\\") + 1) + ".code";
         const auto& code = request.request.shader.code;
-        std::ofstream file(name, std::ios::binary);
-        file.write(reinterpret_cast<const char*>(code.data()), static_cast<std::streamsize>(code.size() * sizeof(code[0])));
-        if (!file) {
-            std::printf("  could not write %s\n", name.c_str());
-            return false;
-        }
+        WriteBytes(name, std::as_bytes(code));
         std::printf("  code -> %s\n", name.c_str());
     }
     if (g_assembly) {
@@ -120,7 +127,7 @@ bool Replay(const char* path) {
         if (g_spirv) {
             std::string name(path);
             name = name.substr(name.find_last_of("/\\") + 1) + ".spv";
-            std::ofstream(name, std::ios::binary).write(reinterpret_cast<const char*>(result.spirv.data()), static_cast<std::streamsize>(result.spirv.size() * sizeof(result.spirv[0])));
+            WriteBytes(name, std::as_bytes(std::span(result.spirv)));
         }
         if (g_memory) {
             for (const auto& binding : result.bindings) {
@@ -156,6 +163,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     int failures = 0;
+    int requests = 0;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--dis") {
             g_disassemble = true;
@@ -186,11 +194,16 @@ int main(int argc, char** argv) {
             continue;
         }
         try {
+            ++requests;
             if (!Replay(argv[i])) ++failures;
         } catch (const std::exception& error) {
             std::printf("%s: could not load request: %s\n", argv[i], FirstLine(error.what()).c_str());
             ++failures;
         }
+    }
+    if (requests == 0) {
+        std::fprintf(stderr, "agc_shader_replay: no request files supplied\n");
+        return 2;
     }
     return failures == 0 ? 0 : 1;
 }

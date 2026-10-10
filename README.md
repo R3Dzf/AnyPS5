@@ -34,21 +34,22 @@ The [shader recompiler](core/shader/recompiler/Recompiler.cpp) produces SPIR-V, 
 - Sampled-image heaps now hold 64 images of one class, with bindless tables retaining 16 slots, from [upstream #2347](https://github.com/boykopovar/AnyPS5/pull/2347) by Alex Collini.
 - Wave64 half-wave scan matching through merged lane masks, vertex entry masks and floating-point min/max identity keys from [upstream #2449](https://github.com/boykopovar/AnyPS5/pull/2449), [#2450](https://github.com/boykopovar/AnyPS5/pull/2450) and [#2451](https://github.com/boykopovar/AnyPS5/pull/2451) by Dean Galvin. Arbitrary reads of unavailable lanes remain unsupported.
 - Failed preparation requests can be captured with `APS5_DUMP_SHADERS=1` and replayed with `agc_shader_replay`, from [upstream #2313](https://github.com/boykopovar/AnyPS5/pull/2313) by Julio Cacko, adapted to this branch's preparation API.
+- Failed request writes now report failure and remain retryable; partial outputs are removed. Replay reports failed input/output operations and rejects invocations with no requests.
 
 Upstream source commits and authors are credited in the commit history.
 
 ## Validation
 
-The full Linux/Windows build and CTest run passed for source commit [0c02287b](https://github.com/R3Dzf/AnyPS5/commit/0c02287bef89ce205b3b552e34109361abe9e941): [Actions run 38044449693](https://github.com/R3Dzf/AnyPS5/actions/runs/38044449693).
+The full Linux/Windows build and CTest run passed for source commit [2c8969be](https://github.com/R3Dzf/AnyPS5/commit/2c8969bea60a2a6ad7c2d76b119e087e971a4e6e): [Actions run 38047302575](https://github.com/R3Dzf/AnyPS5/actions/runs/38047302575).
 
 | Platform | Registered | Passed | Skipped | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Linux | 526 | 499 | 27 | 0 |
-| Windows | 517 | 303 | 214 | 0 |
+| Linux | 538 | 511 | 27 | 0 |
+| Windows | 529 | 303 | 226 | 0 |
 
 Both jobs built the full project and all guest libraries. The Windows patched-library loader test passed. Linux used lavapipe and enabled SPIRV-Tools. Skipped tests leave coverage unverified, particularly for graphics and display facilities.
 
-Flat-store execution is now split into dword/copy/masked stores, narrow/unaligned stores and separate 2/3/4-dword stores across wave32, wave64 and read-only modes. Each of the 15 cases checks 8192 bytes, with project and Mesa shader caches disabled and the 30-second limit retained. Local Linux validation on lavapipe (LLVM 20.1.2) passed all 15 cold cases; the longest took 17.00 seconds. Full Linux/Windows CI validation of this test refinement is pending.
+Flat-store execution is split into dword/copy/masked stores, narrow/unaligned stores and separate 2/3/4-dword stores across wave32, wave64 and read-only modes. Each of the 15 cases checks 8192 bytes, with project and Mesa shader caches disabled and the 30-second limit retained. All 15 cold cases passed on Linux CI; the longest took 5.52 seconds. Local Linux validation on lavapipe (LLVM 20.1.2) also passed all 15; the longest took 17.00 seconds. Windows skipped these GPU execution cases because the required Vulkan device was unavailable.
 
 [Separate Windows regression validation](https://github.com/R3Dzf/AnyPS5/actions/runs/38033956388) reproduced a crash with the old exception implementation, then passed 20 repeated exception tests with the fix. Another 400 fresh video-startup processes exited cleanly with the unavailable-facility status. This checks failure cleanup; successful game rendering was not tested by those runs.
 
@@ -76,6 +77,15 @@ ctest --test-dir build --output-on-failure --timeout 30
 ```
 
 The `libs` target builds and patches the guest libraries; the default build alone does not refresh the full library set. See [usage](docs/user/USAGE.md) for conversion and runtime layout, or the [relinker-only build](docs/dev/BUILD.md#relinker-only) for development without the full dependency set.
+
+For shader diagnostics, run the converted program with `APS5_DUMP_SHADERS=1` to capture requests in its working directory. Build the replay tool separately and pass a captured request:
+
+```sh
+cmake --build build --target agc_shader_replay
+build/core/libs/prx/libSceAgcDriver/agc_shader_replay --spv shader_12345cafe.req
+```
+
+Replace the example request name with the captured filename; Windows uses `agc_shader_replay.exe`. Local Linux checks recompiled a valid request to SPIR-V and reproduced the failure of an unsupported instruction. This tool diagnoses compilation; it does not run a game.
 
 ## Compatibility
 
