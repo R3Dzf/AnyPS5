@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <exception>
 #include <thread>
+#include <utility>
 #include <limits>
 #include <stdexcept>
 
@@ -239,7 +240,7 @@ VideoOutDriver::VideoOutDriver() {
         AgcDriverWaitIdle_nid_postfix();
         std::promise<void> started;
         auto attached = started.get_future();
-        presentThread = std::jthread([this, &started](std::stop_token token) { presentLoop(token, started); });
+        presentThread = std::jthread([this, started = std::move(started)](std::stop_token token) mutable { presentLoop(token, started); });
         attached.get();
         vblankThread = std::jthread([this](std::stop_token token) { vblankLoop(token); });
         LibcRegisterShutdown_nid_postfix([] { VideoOutDriver::Get().Shutdown(); });
