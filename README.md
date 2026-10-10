@@ -41,16 +41,20 @@ Upstream source commits and authors are credited in the commit history.
 
 ## Validation
 
-The full Linux/Windows build and CTest run passed for source commit [2c8969be](https://github.com/R3Dzf/AnyPS5/commit/2c8969bea60a2a6ad7c2d76b119e087e971a4e6e): [Actions run 38047302575](https://github.com/R3Dzf/AnyPS5/actions/runs/38047302575).
+The full Linux/Windows build and CTest run passed for source commit [9be4fe8e](https://github.com/R3Dzf/AnyPS5/commit/9be4fe8e90e0949218950518decadcad76bede82): [Actions run 38052776785](https://github.com/R3Dzf/AnyPS5/actions/runs/38052776785).
 
 | Platform | Registered | Passed | Skipped | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Linux | 538 | 511 | 27 | 0 |
-| Windows | 529 | 303 | 226 | 0 |
+| Linux | 540 | 513 | 27 | 0 |
+| Windows | 532 | 306 | 226 | 0 |
 
 Both jobs built the full project and all guest libraries. The Windows patched-library loader test passed. Linux used lavapipe and enabled SPIRV-Tools. Skipped tests leave coverage unverified, particularly for graphics and display facilities.
 
-Flat-store execution is split into dword/copy/masked stores, narrow/unaligned stores and separate 2/3/4-dword stores across wave32, wave64 and read-only modes. Each of the 15 cases checks 8192 bytes, with project and Mesa shader caches disabled and the 30-second limit retained. All 15 cold cases passed on Linux CI; the longest took 5.52 seconds. Local Linux validation on lavapipe (LLVM 20.1.2) also passed all 15; the longest took 17.00 seconds. Windows skipped these GPU execution cases because the required Vulkan device was unavailable.
+Flat-store execution is split into dword/copy/masked stores, narrow/unaligned stores and separate 2/3/4-dword stores across wave32, wave64 and read-only modes. Each of the 15 cases checks 8192 bytes, with project and Mesa shader caches disabled and the 30-second limit retained. All 15 cold cases passed on Linux CI; the longest took 5.59 seconds. Local Linux validation on lavapipe (LLVM 20.1.2) also passed all 15; the longest took 17.00 seconds. Windows skipped these GPU execution cases because the required Vulkan device was unavailable.
+
+Request-capture and replay regressions passed on both platforms without a Vulkan device. They check blocked output files, recovery, complete serialized requests, concurrent capture, preservation of the original shader failure, and replay output errors. Linux additionally injects write/close failures with `/dev/full`. The Windows replay tool also passed after its runtime bundle was copied to an isolated directory and compiler paths were removed from the child process's `PATH`.
+
+The Windows guest-stack test passed for requested ranges of 16 KiB, 64 KiB, 1 MiB and 16 MiB, including 256 KiB of host calls below each guest range. It also checks oversized-request rejection before native thread creation. The Linux backend still uses host-sized `std::thread` stacks, as recorded in [TechnicalDebt](docs/dev/TechnicalDebt.md).
 
 [Separate Windows regression validation](https://github.com/R3Dzf/AnyPS5/actions/runs/38033956388) reproduced a crash with the old exception implementation, then passed 20 repeated exception tests with the fix. Another 400 fresh video-startup processes exited cleanly with the unavailable-facility status. This checks failure cleanup; successful game rendering was not tested by those runs.
 
