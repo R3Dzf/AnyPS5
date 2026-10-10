@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: integration/bosha-upstream-refresh-20261010
+          ref: fix/bosha-videoout-regressions-20261010
           submodules: recursive
           persist-credentials: false
 
@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: integration/bosha-upstream-refresh-20261010
+          ref: fix/bosha-videoout-regressions-20261010
           submodules: recursive
           persist-credentials: false
 
