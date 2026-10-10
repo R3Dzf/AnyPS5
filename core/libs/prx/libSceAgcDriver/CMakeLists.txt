@@ -672,11 +672,12 @@ if(BUILD_TESTING)
         endif()
     endforeach()
     set_tests_properties(agc_driver_flat_store PROPERTIES RUN_SERIAL TRUE)
-    foreach(agcFlatStoreMode IN ITEMS wave64 read_only)
+    set_property(TEST agc_driver_flat_store APPEND PROPERTY ENVIRONMENT "MESA_SHADER_CACHE_DISABLE=true")
+    foreach(agcFlatStoreMode IN ITEMS wave32_narrow wave32_vector2 wave32_vector3 wave32_vector4 wave64 wave64_narrow wave64_vector2 wave64_vector3 wave64_vector4 read_only read_only_narrow read_only_vector2 read_only_vector3 read_only_vector4)
         set(agcTestName "agc_driver_flat_store_${agcFlatStoreMode}")
         add_test(NAME ${agcTestName} COMMAND agc_driver_flat_store_tests ${agcFlatStoreMode})
         set_tests_properties(${agcTestName} PROPERTIES
-                ENVIRONMENT "ANYPS5_NO_SHADER_CACHE=1" SKIP_RETURN_CODE 77
+                ENVIRONMENT "ANYPS5_NO_SHADER_CACHE=1;MESA_SHADER_CACHE_DISABLE=true" SKIP_RETURN_CODE 77
                 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" RUN_SERIAL TRUE)
         if(WIN32)
             set_tests_properties(${agcTestName} PROPERTIES ENVIRONMENT_MODIFICATION

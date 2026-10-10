@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 #endif
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -38,6 +39,35 @@ alignas(256) constexpr std::array<std::uint32_t, 45> FlatStoreCode{
     0x00000f01, 0x7da80090, 0xdc708300, 0x00000a01, 0xbf810000,
 };
 
+enum class StoreGroup { All, Dword, Narrow, Vector2, Vector3, Vector4 };
+
+template<std::size_t Start, std::size_t Count, std::size_t TailStart, std::size_t TailCount>
+consteval auto StoreCode() {
+    std::array<std::uint32_t, 19 + Count + TailCount> code{};
+    std::copy_n(FlatStoreCode.begin(), 19, code.begin());
+    std::copy_n(FlatStoreCode.begin() + Start, Count, code.begin() + 19);
+    std::copy_n(FlatStoreCode.begin() + TailStart, TailCount, code.begin() + 19 + Count);
+    return code;
+}
+
+alignas(256) constexpr auto DwordStoreCode = StoreCode<19, 6, 37, 8>();
+alignas(256) constexpr auto NarrowStoreCode = StoreCode<25, 6, 44, 1>();
+alignas(256) constexpr auto Vector2StoreCode = StoreCode<33, 2, 44, 1>();
+alignas(256) constexpr auto Vector3StoreCode = StoreCode<35, 2, 44, 1>();
+alignas(256) constexpr auto Vector4StoreCode = StoreCode<31, 2, 44, 1>();
+
+std::span<const std::uint32_t> CodeFor(StoreGroup group) {
+    switch (group) {
+    case StoreGroup::All: return FlatStoreCode;
+    case StoreGroup::Dword: return DwordStoreCode;
+    case StoreGroup::Narrow: return NarrowStoreCode;
+    case StoreGroup::Vector2: return Vector2StoreCode;
+    case StoreGroup::Vector3: return Vector3StoreCode;
+    case StoreGroup::Vector4: return Vector4StoreCode;
+    }
+    throw std::runtime_error("flat store: unknown instruction group");
+}
+
 class GuestBlock {
 public:
     explicit GuestBlock(bool writable) {
@@ -65,34 +95,44 @@ private:
     std::uint8_t* block = nullptr;
 };
 
-std::vector<std::uint8_t> Expected() {
+std::vector<std::uint8_t> Expected(StoreGroup group) {
     std::vector<std::uint8_t> image(CheckedBytes, Fill);
     const auto put = [&](std::uint32_t offset, std::uint32_t value, std::uint32_t bytes) {
         for (std::uint32_t byte = 0; byte < bytes; ++byte) image.at(offset + byte) = static_cast<std::uint8_t>(value >> (byte * 8u));
     };
     for (std::uint32_t tid = 0; tid < Threads; ++tid) {
         const std::array<std::uint32_t, 4> data{0xa1b2c300u + tid, 0x51000000u + tid * 4u, 0x00c0ffeeu + tid * 16u, 0x7e570000u + tid * 8u};
-        put(0x000u + tid * 4u, data[0], 4);
-        put(0x100u + tid * 4u, data[1], 4);
-        put(0x200u + tid * 4u, data[2], 4);
-        if (tid < MaskedThreads) put(0x300u + tid * 4u, data[2], 4);
-        put(0x400u + tid, data[0], 1);
-        put(0x480u + tid * 2u, data[1], 2);
-        put(0x500u + tid * 4u, data[0], 4);
-        put(0x601u + tid * 8u, data[3], 4);
-        for (std::uint32_t dword = 0; dword < 3; ++dword) put(0x800u + tid * 16u + dword * 4u, data[dword + 1u], 4);
-        for (std::uint32_t dword = 0; dword < 4; ++dword) put(0x1000u + tid * 16u + dword * 4u, data[dword], 4);
-        for (std::uint32_t dword = 0; dword < 2; ++dword) put(0x1400u + tid * 16u + dword * 4u, data[dword], 4);
+        if (group == StoreGroup::All || group == StoreGroup::Dword) {
+            put(0x000u + tid * 4u, data[0], 4);
+            put(0x100u + tid * 4u, data[1], 4);
+            put(0x200u + tid * 4u, data[2], 4);
+            if (tid < MaskedThreads) put(0x300u + tid * 4u, data[2], 4);
+            put(0x500u + tid * 4u, data[0], 4);
+        }
+        if (group == StoreGroup::All || group == StoreGroup::Narrow) {
+            put(0x400u + tid, data[0], 1);
+            put(0x480u + tid * 2u, data[1], 2);
+            put(0x601u + tid * 8u, data[3], 4);
+        }
+        if (group == StoreGroup::All || group == StoreGroup::Vector3) {
+            for (std::uint32_t dword = 0; dword < 3; ++dword) put(0x800u + tid * 16u + dword * 4u, data[dword + 1u], 4);
+        }
+        if (group == StoreGroup::All || group == StoreGroup::Vector4) {
+            for (std::uint32_t dword = 0; dword < 4; ++dword) put(0x1000u + tid * 16u + dword * 4u, data[dword], 4);
+        }
+        if (group == StoreGroup::All || group == StoreGroup::Vector2) {
+            for (std::uint32_t dword = 0; dword < 2; ++dword) put(0x1400u + tid * 16u + dword * 4u, data[dword], 4);
+        }
     }
     return image;
 }
 
-void Dispatch(AgcDriver::VulkanDevice& device, std::uint32_t waveSize, const std::uint8_t* base) {
+void Dispatch(AgcDriver::VulkanDevice& device, std::uint32_t waveSize, const std::uint8_t* base, StoreGroup group) {
     const auto address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(base));
     std::vector<std::uint32_t> userData(8, 0u);
     userData[0] = static_cast<std::uint32_t>(address);
     userData[1] = static_cast<std::uint32_t>(address >> 32u);
-    const std::span<const std::uint32_t> code(FlatStoreCode);
+    const auto code = CodeFor(group);
     const std::array<ShaderRecompiler::MemoryRegion, 1> memory{{{reinterpret_cast<std::uintptr_t>(code.data()), std::as_bytes(code)}}};
     const ShaderRecompiler::ShaderComputeStageInfo compute{{Threads, 1, 1}, 0, {false, false, false}, false, 1};
     ShaderRecompiler::RecompileRequest request{
@@ -107,18 +147,18 @@ void Dispatch(AgcDriver::VulkanDevice& device, std::uint32_t waveSize, const std
     device.WaitIdle();
 }
 
-void RunStores(AgcDriver::VulkanDevice& device, GuestBlock& guest, std::uint32_t waveSize) {
+void RunStores(AgcDriver::VulkanDevice& device, GuestBlock& guest, std::uint32_t waveSize, StoreGroup group) {
     guest.Clear();
-    Dispatch(device, waveSize, guest.Data());
-    const auto expected = Expected();
+    Dispatch(device, waveSize, guest.Data(), group);
+    const auto expected = Expected(group);
     for (std::uint32_t offset = 0; offset < CheckedBytes; ++offset) {
         const auto actual = guest.Data()[offset];
         Require(actual == expected[offset], "flat store: wave" + std::to_string(waveSize) + " byte " + std::to_string(offset) + " is " + std::to_string(actual) + ", expected " + std::to_string(expected[offset]));
     }
 }
 
-void RunReadOnly(AgcDriver::VulkanDevice& device, const GuestBlock& guest) {
-    Dispatch(device, 32, guest.Data());
+void RunReadOnly(AgcDriver::VulkanDevice& device, const GuestBlock& guest, StoreGroup group) {
+    Dispatch(device, 32, guest.Data(), group);
     for (std::uint32_t offset = 0; offset < CheckedBytes; ++offset) {
         Require(guest.Data()[offset] == Fill, "flat store: a store into a read-only range changed byte " + std::to_string(offset));
     }
@@ -130,15 +170,30 @@ int main(int argc, char** argv) {
     try {
         Require(argc <= 2, "flat store: expected one optional test mode");
         const std::string_view mode = argc == 2 ? argv[1] : "all";
-        Require(mode == "all" || mode == "wave32" || mode == "wave64" || mode == "read_only",
+        constexpr std::array<std::string_view, 16> modes{
+            "all", "wave32", "wave32_narrow", "wave32_vector2", "wave32_vector3", "wave32_vector4",
+            "wave64", "wave64_narrow", "wave64_vector2", "wave64_vector3", "wave64_vector4",
+            "read_only", "read_only_narrow", "read_only_vector2", "read_only_vector3", "read_only_vector4"
+        };
+        Require(std::find(modes.begin(), modes.end(), mode) != modes.end(),
                 "flat store: unknown test mode " + std::string(mode));
         const auto device = OpenVulkanTestDevice();
         if (!device) return VulkanTestSkipped;
         GuestBlock writable(true);
         const GuestBlock readOnly(false);
-        if (mode == "all" || mode == "wave32") RunStores(*device, writable, 32);
-        if (mode == "all" || mode == "wave64") RunStores(*device, writable, 64);
-        if (mode == "all" || mode == "read_only") RunReadOnly(*device, readOnly);
+        if (mode == "all") {
+            RunStores(*device, writable, 32, StoreGroup::All);
+            RunStores(*device, writable, 64, StoreGroup::All);
+            RunReadOnly(*device, readOnly, StoreGroup::All);
+        } else {
+            auto group = StoreGroup::Dword;
+            if (mode.ends_with("_narrow")) group = StoreGroup::Narrow;
+            else if (mode.ends_with("_vector2")) group = StoreGroup::Vector2;
+            else if (mode.ends_with("_vector3")) group = StoreGroup::Vector3;
+            else if (mode.ends_with("_vector4")) group = StoreGroup::Vector4;
+            if (mode.starts_with("read_only")) RunReadOnly(*device, readOnly, group);
+            else RunStores(*device, writable, mode.starts_with("wave64") ? 64 : 32, group);
+        }
         std::puts("flat store tests passed");
         return 0;
     } catch (const std::exception& error) {

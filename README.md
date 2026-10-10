@@ -35,20 +35,20 @@ The [shader recompiler](core/shader/recompiler/Recompiler.cpp) produces SPIR-V, 
 - Wave64 half-wave scan matching through merged lane masks, vertex entry masks and floating-point min/max identity keys from [upstream #2449](https://github.com/boykopovar/AnyPS5/pull/2449), [#2450](https://github.com/boykopovar/AnyPS5/pull/2450) and [#2451](https://github.com/boykopovar/AnyPS5/pull/2451) by Dean Galvin. Arbitrary reads of unavailable lanes remain unsupported.
 - Failed preparation requests can be captured with `APS5_DUMP_SHADERS=1` and replayed with `agc_shader_replay`, from [upstream #2313](https://github.com/boykopovar/AnyPS5/pull/2313) by Julio Cacko, adapted to this branch's preparation API.
 
-Original upstream authorship is retained in the commit history.
+Upstream source commits and authors are credited in the commit history.
 
 ## Validation
 
-The full Linux/Windows build and CTest run passed for source commit [76f71f85](https://github.com/R3Dzf/AnyPS5/commit/76f71f853afb5beb0d8c54e7cb20c4900e04e25b): [Actions run 38033998905](https://github.com/R3Dzf/AnyPS5/actions/runs/38033998905).
+The full Linux/Windows build and CTest run passed for source commit [0c02287b](https://github.com/R3Dzf/AnyPS5/commit/0c02287bef89ce205b3b552e34109361abe9e941): [Actions run 38044449693](https://github.com/R3Dzf/AnyPS5/actions/runs/38044449693).
 
 | Platform | Registered | Passed | Skipped | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Linux | 523 | 496 | 27 | 0 |
-| Windows | 514 | 303 | 211 | 0 |
+| Linux | 526 | 499 | 27 | 0 |
+| Windows | 517 | 303 | 214 | 0 |
 
 Both jobs built the full project and all guest libraries. The Windows patched-library loader test passed. Linux used lavapipe and enabled SPIRV-Tools. Skipped tests leave coverage unverified, particularly for graphics and display facilities.
 
-A later [validation run](https://github.com/R3Dzf/AnyPS5/actions/runs/38038459755) passed Windows but timed out in the cold Linux `agc_driver_flat_store` test at 30.06 seconds. That test is now split into separate wave32, wave64 and read-only cases; all byte comparisons and the 30-second limit are retained. Full validation of the new shader integrations and split cases is pending.
+Flat-store execution is now split into dword/copy/masked stores, narrow/unaligned stores and separate 2/3/4-dword stores across wave32, wave64 and read-only modes. Each of the 15 cases checks 8192 bytes, with project and Mesa shader caches disabled and the 30-second limit retained. Local Linux validation on lavapipe (LLVM 20.1.2) passed all 15 cold cases; the longest took 17.00 seconds. Full Linux/Windows CI validation of this test refinement is pending.
 
 [Separate Windows regression validation](https://github.com/R3Dzf/AnyPS5/actions/runs/38033956388) reproduced a crash with the old exception implementation, then passed 20 repeated exception tests with the fix. Another 400 fresh video-startup processes exited cleanly with the unavailable-facility status. This checks failure cleanup; successful game rendering was not tested by those runs.
 
