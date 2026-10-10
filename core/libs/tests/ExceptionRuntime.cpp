@@ -174,7 +174,27 @@ void CheckForcedUnwind() {
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 63);
 }
 
+void CheckConstructedExceptionPointer() {
+    int released = 0;
+    struct RetainedError {
+        int* released;
+        ~RetainedError() { ++*released; }
+    };
+    auto retained = std::make_exception_ptr(RetainedError{&released});
+    const int alreadyReleased = released;
+    auto copy = retained;
+    bool caught = false;
+    try { std::rethrow_exception(copy); }
+    catch (const RetainedError& error) { caught = error.released == &released; }
+    assert(caught && released == alreadyReleased);
+    retained = nullptr;
+    assert(released == alreadyReleased);
+    copy = nullptr;
+    assert(released == alreadyReleased + 1);
+}
+
 int main() {
+    CheckConstructedExceptionPointer();
     try { ThrowInt(); assert(false); } catch (int value) { assert(value == 42); }
     assert(destroyed == 1);
     try { ThrowClass(); assert(false); } catch (const Base& value) { assert(value.value == 7); }
