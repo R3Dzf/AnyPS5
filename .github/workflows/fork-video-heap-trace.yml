@@ -96,11 +96,21 @@ jobs:
                   if any(name in line for name in ['current_exception', 'rethrow_exception', 'M_addref', 'M_release', '__cxa_']):
                       print(library, line.strip())
           PYTHON
+      - name: Enable isolated executable page heap
+        shell: pwsh
+        run: |
+          $probeKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\exception-handoff.exe'
+          New-Item -Path $probeKey -Force | Out-Null
+          New-ItemProperty -Path $probeKey -Name GlobalFlag -PropertyType String -Value '0x02000000' -Force | Out-Null
       - name: Capture isolated handoff backtrace
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
           cd build
           gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'run' -ex 'thread apply all bt full' --args tests/exception-handoff.exe 2>&1 | tee "$GITHUB_WORKSPACE/video-heap-isolated-backtrace.log"
+      - name: Remove isolated executable page heap
+        if: ${{ always() }}
+        shell: pwsh
+        run: Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\exception-handoff.exe' -Recurse -Force -ErrorAction SilentlyContinue
       - name: Repeat isolated handoff
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
