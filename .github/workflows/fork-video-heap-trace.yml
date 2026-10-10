@@ -102,6 +102,7 @@ jobs:
           $probeKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\exception-handoff.exe'
           New-Item -Path $probeKey -Force | Out-Null
           New-ItemProperty -Path $probeKey -Name GlobalFlag -PropertyType String -Value '0x02000000' -Force | Out-Null
+          New-ItemProperty -Path $probeKey -Name PageHeapFlags -PropertyType String -Value '0x3' -Force | Out-Null
       - name: Capture isolated handoff backtrace
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
