@@ -49,7 +49,7 @@ void Driver::reportSkip(const char* kind, const std::string& what) {
     if (!line.empty()) std::fwrite(line.data(), 1, line.size(), stderr);
 }
 
-std::string Driver::dumpRequest(std::uint64_t address, const ShaderRecompiler::RecompileRequest& request) {
+std::string Driver::DumpRequest(std::uint64_t address, const ShaderRecompiler::RecompileRequest& request) {
     static std::mutex dumpMutex;
     static std::set<std::uint64_t> dumped;
     char name[64];

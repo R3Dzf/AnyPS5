@@ -207,7 +207,7 @@ void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, 
             if (traceCapSync()) traceCapture("dispatch-capture", address, submission.queue, captured, Graphics::Recorder::ThreadWaitedMs() - waitedBefore);
             captureMs += phaseTiming.Elapsed();
             phaseTiming.Phase(PhaseCapture);
-            if (dumpShaders) static_cast<void>(dumpRequest(address, request));
+            if (dumpShaders) static_cast<void>(DumpRequest(address, request));
             const auto started = std::chrono::steady_clock::now();
 
 
@@ -220,7 +220,7 @@ void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, 
             totalMs += elapsed;
             if (profile && elapsed > 200) std::fprintf(stderr, "[gpu] compute shader 0x%llx recompile took %.0f ms (%zu SPIR-V words, %zu captured regions, total %.1f s)\n", static_cast<unsigned long long>(address), elapsed, compiledResult->spirv.size(), captured.size(), totalMs / 1000);
         } catch (const std::exception& error) {
-            const auto dump = dumpShaders ? dumpRequest(address, request) : std::string{};
+            const auto dump = dumpShaders ? DumpRequest(address, request) : std::string{};
 
             std::string reason = error.what();
             if (const auto newline = reason.find('\n'); newline != std::string::npos) reason.resize(newline);
