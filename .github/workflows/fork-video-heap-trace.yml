@@ -37,18 +37,25 @@ jobs:
           #include <thread>
           #include <stdexcept>
           #include <utility>
+          #include <cstdio>
           extern "C" void NotImplemented_nid_no_patch(const char*);
           int main() {
               for (int attempt = 0; attempt < 100; ++attempt) {
                   std::promise<void> started;
                   auto attached = started.get_future();
                   std::jthread producer([started = std::move(started)]() mutable {
+                      std::fputs("producer throwing\n", stderr);
                       try { NotImplemented_nid_no_patch("isolated handoff"); }
-                      catch (...) { started.set_exception(std::current_exception()); }
+                      catch (...) {
+                          std::fputs("producer caught\n", stderr);
+                          started.set_exception(std::current_exception());
+                          std::fputs("producer published\n", stderr);
+                      }
                   });
                   try { attached.get(); return 1; }
-                  catch (const std::runtime_error&) {}
+                  catch (const std::runtime_error&) { std::fputs("consumer caught\n", stderr); }
                   producer.join();
+                  std::fputs("producer joined\n", stderr);
               }
           }
           CPP
@@ -89,6 +96,11 @@ jobs:
                   if any(name in line for name in ['current_exception', 'rethrow_exception', 'M_addref', 'M_release', '__cxa_']):
                       print(library, line.strip())
           PYTHON
+      - name: Capture isolated handoff backtrace
+        run: |
+          export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
+          cd build
+          gdb -batch -ex 'set pagination off' -ex 'set print thread-events off' -ex 'run' -ex 'thread apply all bt full' --args tests/exception-handoff.exe 2>&1 | tee "$GITHUB_WORKSPACE/video-heap-isolated-backtrace.log"
       - name: Repeat isolated handoff
         run: |
           export PATH="$GITHUB_WORKSPACE/build/core/libs/libs/unpatched:$GITHUB_WORKSPACE/build/tests:/c/winlibs/mingw64/bin:$PATH"
