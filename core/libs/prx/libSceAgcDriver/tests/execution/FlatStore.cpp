@@ -15,6 +15,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -125,15 +126,19 @@ void RunReadOnly(AgcDriver::VulkanDevice& device, const GuestBlock& guest) {
 
 }
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        Require(argc <= 2, "flat store: expected one optional test mode");
+        const std::string_view mode = argc == 2 ? argv[1] : "all";
+        Require(mode == "all" || mode == "wave32" || mode == "wave64" || mode == "read_only",
+                "flat store: unknown test mode " + std::string(mode));
         const auto device = OpenVulkanTestDevice();
         if (!device) return VulkanTestSkipped;
         GuestBlock writable(true);
         const GuestBlock readOnly(false);
-        RunStores(*device, writable, 32);
-        RunStores(*device, writable, 64);
-        RunReadOnly(*device, readOnly);
+        if (mode == "all" || mode == "wave32") RunStores(*device, writable, 32);
+        if (mode == "all" || mode == "wave64") RunStores(*device, writable, 64);
+        if (mode == "all" || mode == "read_only") RunReadOnly(*device, readOnly);
         std::puts("flat store tests passed");
         return 0;
     } catch (const std::exception& error) {
