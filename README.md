@@ -30,6 +30,10 @@ The [shader recompiler](core/shader/recompiler/Recompiler.cpp) produces SPIR-V, 
 - Current-main memory and synchronization changes, including staging-buffer reuse and reduced heap-mirror work, plus device-buffer allocation/binding failure recovery.
 - BDA shader-store and page-tracking optimizations from [upstream #1265](https://github.com/boykopovar/AnyPS5/pull/1265) by popcoder565 and [#1280](https://github.com/boykopovar/AnyPS5/pull/1280) by Scott Schuster.
 - Windows compiler-runtime selection, exception/future lifetime fixes, native helper preservation during NID patching and cleanup after failed video initialization.
+- Deferred shader preparation and acceptance of matching bound header copies from [upstream #1836](https://github.com/boykopovar/AnyPS5/pull/1836) and [#1837](https://github.com/boykopovar/AnyPS5/pull/1837) by EdouardSence. Unsupported computed calls still fail when used.
+- Sampled-image heaps now hold 64 images of one class, with bindless tables retaining 16 slots, from [upstream #2347](https://github.com/boykopovar/AnyPS5/pull/2347) by Alex Collini.
+- Wave64 half-wave scan matching through merged lane masks, vertex entry masks and floating-point min/max identity keys from [upstream #2449](https://github.com/boykopovar/AnyPS5/pull/2449), [#2450](https://github.com/boykopovar/AnyPS5/pull/2450) and [#2451](https://github.com/boykopovar/AnyPS5/pull/2451) by Dean Galvin. Arbitrary reads of unavailable lanes remain unsupported.
+- Failed preparation requests can be captured with `APS5_DUMP_SHADERS=1` and replayed with `agc_shader_replay`, from [upstream #2313](https://github.com/boykopovar/AnyPS5/pull/2313) by Julio Cacko, adapted to this branch's preparation API.
 
 Original upstream authorship is retained in the commit history.
 
@@ -44,7 +48,7 @@ The full Linux/Windows build and CTest run passed for source commit [76f71f85](h
 
 Both jobs built the full project and all guest libraries. The Windows patched-library loader test passed. Linux used lavapipe and enabled SPIRV-Tools. Skipped tests leave coverage unverified, particularly for graphics and display facilities.
 
-Cold Linux runs of `flat_store` and `global_vcc_base` completed in 25.05 and 15.91 seconds, respectively, within the existing 30-second limit.
+A later [validation run](https://github.com/R3Dzf/AnyPS5/actions/runs/38038459755) passed Windows but timed out in the cold Linux `agc_driver_flat_store` test at 30.06 seconds. That test is now split into separate wave32, wave64 and read-only cases; all byte comparisons and the 30-second limit are retained. Full validation of the new shader integrations and split cases is pending.
 
 [Separate Windows regression validation](https://github.com/R3Dzf/AnyPS5/actions/runs/38033956388) reproduced a crash with the old exception implementation, then passed 20 repeated exception tests with the fix. Another 400 fresh video-startup processes exited cleanly with the unavailable-facility status. This checks failure cleanup; successful game rendering was not tested by those runs.
 
