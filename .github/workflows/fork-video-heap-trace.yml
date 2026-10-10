@@ -37,25 +37,26 @@ jobs:
           #include <thread>
           #include <stdexcept>
           #include <utility>
-          #include <cstdio>
           extern "C" void NotImplemented_nid_no_patch(const char*);
+          #ifdef ANYPS5_TEST_OWN_RESULT_BASE
+          namespace std {
+          __future_base::_Result_base::_Result_base() = default;
+          __future_base::_Result_base::~_Result_base() = default;
+          }
+          #endif
           int main() {
               for (int attempt = 0; attempt < 100; ++attempt) {
                   std::promise<void> started;
                   auto attached = started.get_future();
                   std::jthread producer([started = std::move(started)]() mutable {
-                      std::fputs("producer throwing\n", stderr);
                       try { NotImplemented_nid_no_patch("isolated handoff"); }
                       catch (...) {
-                          std::fputs("producer caught\n", stderr);
                           started.set_exception(std::current_exception());
-                          std::fputs("producer published\n", stderr);
                       }
                   });
                   try { attached.get(); return 1; }
-                  catch (const std::runtime_error&) { std::fputs("consumer caught\n", stderr); }
+                  catch (const std::runtime_error&) {}
                   producer.join();
-                  std::fputs("producer joined\n", stderr);
               }
           }
           CPP
@@ -83,6 +84,8 @@ jobs:
           dlltool -d libc.def -D libc.prx -l libc-import.a
           g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables exception-handoff.cpp libc-import.a -o build/tests/exception-handoff.exe
           objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff.exe
+          g++ -std=c++20 -O3 -g -fno-asynchronous-unwind-tables -DANYPS5_TEST_OWN_RESULT_BASE exception-handoff.cpp libc-import.a -o build/tests/exception-handoff-result.exe
+          objcopy --rename-section .eh_frame=.ehfram build/tests/exception-handoff-result.exe
           python - <<'PYTHON'
           from pathlib import Path
           import subprocess
@@ -122,18 +125,25 @@ jobs:
           import os
           import subprocess
           root = Path.cwd()
-          binary = root / 'build/tests/exception-handoff.exe'
-          def run(attempt):
-              return subprocess.run([str(binary)], cwd=root / 'build', capture_output=True, text=True, timeout=20)
-          with ThreadPoolExecutor(max_workers=2) as pool:
-              results = list(pool.map(run, range(200)))
-          counts = Counter(result.returncode for result in results)
-          print('isolated_handoff', dict(counts), flush=True)
-          for result in results:
-              if result.returncode != 0:
-                  print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
-                  break
-          Path('video-heap-isolated-handoff.log').write_text(str(dict(counts)))
+          all_counts = {}
+          for name in ['exception-handoff', 'exception-handoff-result']:
+              binary = root / 'build/tests' / (name + '.exe')
+              def run(attempt):
+                  return subprocess.run([str(binary)], cwd=root / 'build', capture_output=True, text=True, timeout=20)
+              with ThreadPoolExecutor(max_workers=2) as pool:
+                  results = list(pool.map(run, range(200)))
+              counts = Counter(result.returncode for result in results)
+              all_counts[name] = dict(counts)
+              print(name, dict(counts), flush=True)
+              for result in results:
+                  if result.returncode != 0:
+                      print('Failure:', result.returncode, result.stdout, result.stderr, flush=True)
+                      break
+          Path('video-heap-isolated-handoff.log').write_text(str(all_counts))
+          if all_counts['exception-handoff-result'] != {0: 200}:
+              raise RuntimeError('Owned future result did not preserve exception lifetime')
+          if all_counts['exception-handoff'] == {0: 200}:
+              raise RuntimeError('Negative control did not reproduce')
           PYTHON
       - name: Save heap traces
         if: ${{ always() }}
